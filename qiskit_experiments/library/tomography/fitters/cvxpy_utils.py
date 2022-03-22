@@ -13,7 +13,7 @@
 Utility functions for CVXPy module
 """
 
-from typing import Callable, List, Tuple, Optional
+from typing import Callable, List, Tuple, Optional, Union
 import functools
 import numpy as np
 import scipy.sparse as sps
@@ -176,36 +176,75 @@ def psd_constaint(mat_r: Variable, mat_i: Variable) -> List[Constraint]:
     return [bmat >> 0]
 
 
-def trace_constaint(mat_r: Variable, mat_i: Variable, trace: complex) -> List[Constraint]:
+def trace_constaint(
+    mat_r: Union[Variable, List[Variable]],
+    mat_i: Union[Variable, List[Variable]],
+    trace: complex,
+    hermitian: bool = False,
+) -> List[Constraint]:
     """Return CVXPY trace constraints for a complex matrix.
 
     Args:
         mat_r: The CVXPY variable for the real part of the matrix.
         mat_i: The CVXPY variable for the complex part of the matrix.
         trace: The value for the trace constraint.
-
+        hermitian: If the input variables are Hermitian, only the real trace constraint
+                   is required.
     Returns:
         A list of constraints on the real and imaginary parts.
     """
-    return [cvxpy.trace(mat_r) == cvxpy.real(trace), cvxpy.trace(mat_i) == cvxpy.imag(trace)]
+    if isinstance(mat_r, (list, tuple)):
+        arg_r = cvxpy.sum(mat_r)
+    else:
+        arg_r = mat_r
+    cons = [cvxpy.trace(arg_r) == np.real(trace)]
+    if hermitian:
+        return cons
+
+    # If not hermitian add imaginary trace constrant
+    if isinstance(mat_i, (list, tuple)):
+        arg_i = cvxpy.sum(mat_i)
+    else:
+        arg_i = mat_i
+        cons.append(cvxpy.trace(arg_i) == np.imag(trace))
+    return cons
 
 
-def trace_preserving_constaint(mat_r: Variable, mat_i: Variable) -> List[Constraint]:
+def trace_preserving_constaint(
+    mat_r: Union[Variable, List[Variable]],
+    mat_i: Union[Variable, List[Variable]],
+    hermitian: bool = False,
+) -> List[Constraint]:
     """Return CVXPY trace preserving constraints for a complex matrix.
 
     Args:
         mat_r: The CVXPY variable for the real part of the matrix.
         mat_i: The CVXPY variable for the complex part of the matrix.
+        hermitian: If the input variables are Hermitian, only the real trace constraint
+                   is required.
 
     Returns:
         A list of constraints on the real and imaginary parts.
     """
-    sdim = int(np.sqrt(mat_r.shape[0]))
-    ptr = partial_trace_super(sdim, sdim)
-    return [
-        ptr @ cvxpy.vec(mat_r) == np.identity(sdim).ravel(),
-        ptr @ cvxpy.vec(mat_i) == np.zeros(sdim * sdim),
-    ]
+    if isinstance(mat_r, (tuple, list)):
+        sdim = mat_r[0].shape[0]
+        arg_r = cvxpy.sum(mat_r)
+    else:
+        sdim = mat_r.shape[0]
+        arg_r = mat_r
+    dim = int(np.sqrt(sdim))
+    ptr = partial_trace_super(dim, dim)
+    cons = [ptr @ cvxpy.vec(arg_r) == np.identity(dim).ravel()]
+    if hermitian:
+        return cons
+
+    # If not hermitian add imaginary partial trace constrant
+    if isinstance(mat_i, (tuple, list)):
+        arg_r = cvxpy.sum(mat_i)
+    else:
+        arg_i = mat_i
+    cons.append(ptr @ cvxpy.vec(arg_i) == np.zeros(dim * dim))
+    return cons
 
 
 @functools.lru_cache(3)

@@ -22,6 +22,7 @@ from qiskit_experiments.library.tomography.basis import (
     LocalMeasurementBasis,
     LocalPreparationBasis,
 )
+from .lstsq_utils import _partial_outcome_function
 
 
 def linear_inversion(
@@ -33,6 +34,7 @@ def linear_inversion(
     preparation_basis: Optional[PreparationBasis] = None,
     measurement_qubits: Optional[Tuple[int]] = None,
     preparation_qubits: Optional[Tuple[int]] = None,
+    conditional_indices: Optional[np.ndarray] = None,
 ) -> Tuple[np.ndarray, Dict]:
     r"""Linear inversion tomography fitter.
 
@@ -97,6 +99,10 @@ def linear_inversion(
         preparation_qubits: Optional, the physical qubits that were prepared.
                             If None they are assumed to be [0, ..., N-1] for
                             N preparated qubits.
+        conditional_indices: Optional, conditional measurement data indices.
+                             If set this will return a list of conditional
+                             fitted states conditioned on a fixed basis
+                             measurement of these qubits.
 
     Raises:
         AnalysisError: If the fitted vector is not a square matrix
@@ -126,16 +132,56 @@ def linear_inversion(
     if shot_data is None:
         shot_data = np.ones(len(outcome_data))
 
+    if conditional_indices:
+        # Split measurement qubits into conditional and non-conditional qubits
+        f_cond_qubits = []
+        f_meas_qubits = []
+        f_meas_indices = []
+        for i, qubit in enumerate(measurement_qubits):
+            if i in conditional_indices:
+                f_cond_qubits.append(qubit)
+            else:
+                f_meas_qubits.append(qubit)
+                f_meas_indices.append(i)
+
+        # Get size of conditional outcomes
+        cond_size = np.prod(measurement_basis.outcome_shape(f_cond_qubits))
+
+        # Indexing array for fully tomo measured qubits
+        f_meas_indices = np.array(f_meas_indices, dtype=int)
+
+        # Reduced outcome functions
+        f_meas_outcome = _partial_outcome_function(tuple(f_meas_indices))
+        f_cond_outcome = _partial_outcome_function(tuple(conditional_indices))
+    else:
+        cond_size = 1
+        f_meas_qubits = measurement_qubits
+        f_meas_indices = slice(None)
+        f_meas_outcome = lambda x: x
+        f_cond_outcome = lambda x: 0
+
+    # Calculate shape of matrix to be fitted
+    if preparation_qubits:
+        pdim = np.prod(prep_dual_basis.matrix_shape(preparation_qubits))
+    else:
+        pdim = 1
+    if measurement_basis:
+        mdim = np.prod(meas_dual_basis.matrix_shape(f_meas_qubits))
+    else:
+        mdim = 1
+    shape = (pdim * mdim, pdim * mdim)
+
     # Construct linear inversion matrix
-    rho_fit = 0.0
+    # This does not currently support readout error mitigation of
+    # conditional bit measurements
+    fits = [np.zeros(shape, dtype=complex) for _ in range(cond_size)]
     for i, outcomes in enumerate(outcome_data):
         shots = shot_data[i]
-        midx = measurement_data[i]
         pidx = preparation_data[i]
+        midx = measurement_data[i][f_meas_indices]
 
         # Get prep basis component
         if prep_dual_basis:
-            # TODO: Add prep qubits
             p_mat = np.transpose(prep_dual_basis.matrix(pidx, preparation_qubits))
         else:
             p_mat = None
@@ -145,20 +191,24 @@ def linear_inversion(
             if freq == 0:
                 # Skip component with zero probability
                 continue
+            prob = freq / shots
 
+            # Get component on non-conditional bits
+            outcome_meas = f_meas_outcome(outcome)
             if meas_dual_basis:
-                # TODO: Add meas qubits
-                dual_op = meas_dual_basis.matrix(midx, outcome, measurement_qubits)
+                dual_op = meas_dual_basis.matrix(midx, outcome_meas, f_meas_qubits)
                 if prep_dual_basis:
                     dual_op = np.kron(p_mat, dual_op)
             else:
                 dual_op = p_mat
 
-            # Add component to linear inversion reconstruction
-            prob = freq / shots
-            rho_fit = rho_fit + prob * dual_op
+            # Add component to correct conditional
+            outcome_cond = f_cond_outcome(outcome)
+            fits[outcome_cond] += prob * dual_op
 
-    return rho_fit, {}
+    if conditional_indices is None:
+        fits = fits[0]
+    return fits, {}
 
 
 @lru_cache(None)
