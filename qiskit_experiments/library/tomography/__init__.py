@@ -65,6 +65,7 @@ Built in tomography basis classes
     basis.PauliMeasurementBasis
     basis.PauliPreparationBasis
     basis.Pauli6PreparationBasis
+    basis.ReadoutMitigatedMeasurementBasis
 
 Custom local tensor product basis classes
 
