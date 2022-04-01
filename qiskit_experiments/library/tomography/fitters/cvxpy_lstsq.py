@@ -247,9 +247,14 @@ def cvxpy_linear_lstsq(
         "cvxpy_solver": prob.solver_stats.solver_name,
         "cvxpy_status": prob.status,
     }
+    if trace_preserving:
+        metadata["tp_constraint"] = True
+    if psd:
+        metadata["psd_constraint"] = True
+    if trace:
+        metadata["trace_constraint"] = trace
+
     fits = [rhos_r[k].value + 1j * rhos_i[k].value for k in range(num_components)]
-    if conditional_indices is None:
-        fits = fits[0]
     return fits, metadata
 
 

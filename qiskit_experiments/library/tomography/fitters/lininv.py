@@ -206,8 +206,6 @@ def linear_inversion(
             outcome_cond = f_cond_outcome(outcome)
             fits[outcome_cond] += prob * dual_op
 
-    if conditional_indices is None:
-        fits = fits[0]
     return fits, {}
 
 

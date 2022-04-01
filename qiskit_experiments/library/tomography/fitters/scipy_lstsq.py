@@ -134,8 +134,6 @@ def scipy_linear_lstsq(
         fit = np.reshape(sol, (dim, dim), order="F")
         fits.append(fit)
 
-    if conditional_indices is None:
-        fits = fits[0]
     return fits, {}
 
 
