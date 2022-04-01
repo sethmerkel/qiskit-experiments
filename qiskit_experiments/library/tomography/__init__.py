@@ -26,6 +26,8 @@ Experiments
 
     StateTomography
     ProcessTomography
+    ConditionalStateTomography
+    ConditionalProcessTomography
 
 
 Analysis
@@ -89,8 +91,12 @@ Abstract base classes
 """
 
 # Experiment Classes
-from .qst_experiment import StateTomography, StateTomographyAnalysis
-from .qpt_experiment import ProcessTomography, ProcessTomographyAnalysis
+from .qst_experiment import StateTomography, ConditionalStateTomography, StateTomographyAnalysis
+from .qpt_experiment import (
+    ProcessTomography,
+    ConditionalProcessTomography,
+    ProcessTomographyAnalysis,
+)
 
 # Basis Classes
 from . import basis

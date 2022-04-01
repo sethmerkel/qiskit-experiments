@@ -37,7 +37,9 @@ Experiments for verification and validation of quantum devices.
     ~randomized_benchmarking.StandardRB
     ~randomized_benchmarking.InterleavedRB
     ~tomography.StateTomography
+    ~tomography.ConditionalStateTomography
     ~tomography.ProcessTomography
+    ~tomography.ConditionalProcessTomography
     ~quantum_volume.QuantumVolume
 
 .. _characterization:

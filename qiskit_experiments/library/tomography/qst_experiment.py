@@ -121,3 +121,65 @@ class StateTomography(TomographyExperiment):
             state = partial_trace(state, non_meas_qargs)
 
         return state
+
+
+class ConditionalStateTomography(TomographyExperiment):
+    """Quantum state tomography experiment.
+
+    # section: overview
+        TODO
+
+    # section: analysis_ref
+        :py:class:`StateTomographyAnalysis`
+
+    # section: see_also
+        qiskit_experiments.library.tomography.tomography_experiment.TomographyExperiment
+    """
+
+    def __init__(
+        self,
+        circuit: Union[QuantumCircuit, Instruction, BaseOperator, Statevector],
+        measurement_basis: basis.MeasurementBasis = basis.PauliMeasurementBasis(),
+        measurement_qubits: Optional[Sequence[int]] = None,
+        conditional_indices: Optional[Sequence[int]] = None,
+        basis_indices: Optional[Iterable[List[int]]] = None,
+        qubits: Optional[Sequence[int]] = None,
+    ):
+        """Initialize a quantum process tomography experiment.
+
+        Args:
+            circuit: the quantum process circuit. If not a quantum circuit
+                it must be a class that can be appended to a quantum circuit.
+            measurement_basis: Tomography basis for measurements. If not specified the
+                default basis is the :class:`~basis.PauliMeasurementBasis`.
+            measurement_qubits: Optional, the qubits to be measured. These should refer
+                to the logical qubits in the state circuit. If None all qubits
+                in the state circuit will be measured.
+            conditional_indices: Indices of measurement qubits that should be treated
+                                 as conditional qubits for measurement.
+            basis_indices: Optional, a list of basis indices for generating partial
+                tomography measurement data. Each item should be given as a list of
+                measurement basis configurations ``[m[0], m[1], ...]`` where ``m[i]``
+                is the measurement basis index for qubit-i. If not specified full
+                tomography for all indices of the measurement basis will be performed.
+            qubits: Optional, the physical qubits for the initial state circuit.
+        """
+        if isinstance(circuit, Statevector):
+            # Convert to circuit using initialize instruction
+            circ = QuantumCircuit(circuit.num_qubits)
+            circ.initialize(circuit)
+            circuit = circ
+
+        if basis_indices is not None:
+            # Add trivial preparation indices for base class
+            basis_indices = [([], i) for i in basis_indices]
+
+        super().__init__(
+            circuit,
+            measurement_basis=measurement_basis,
+            measurement_qubits=measurement_qubits,
+            basis_indices=basis_indices,
+            qubits=qubits,
+            conditional_indices=conditional_indices,
+            analysis=StateTomographyAnalysis(),
+        )
