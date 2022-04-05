@@ -62,24 +62,29 @@ def lstsq_data(
             )
             num_cond = len(conditional_indices)
             cdim = np.prod(measurement_basis.outcome_shape(conditional_qubits))
-
-        mdim = np.prod(measurement_basis.matrix_shape(measurement_qubits))
+        if measurement_qubits:
+            mdim = np.prod(measurement_basis.matrix_shape(measurement_qubits))
 
     # Get preparation basis dimensions
     if preparation_basis:
         bsize, num_prep = preparation_data.shape
         if not preparation_qubits:
             preparation_qubits = tuple(range(num_prep))
-        pdim = np.prod(preparation_basis.matrix_shape(preparation_qubits))
+        if preparation_qubits:
+            pdim = np.prod(preparation_basis.matrix_shape(preparation_qubits))
 
     # Reduced outcome functions
     # Set measurement indices to an array so we can use for array indexing later
     if num_cond:
-        measurement_indices = np.array(
-            [i for i in range(num_meas) if i not in conditional_indices], dtype=int
-        )
-        f_meas_outcome = _partial_outcome_function(tuple(measurement_indices))
         f_cond_outcome = _partial_outcome_function(conditional_indices)
+        if measurement_qubits:
+            measurement_indices = np.array(
+                [i for i in range(num_meas) if i not in conditional_indices], dtype=int
+            )
+            f_meas_outcome = _partial_outcome_function(tuple(measurement_indices))
+        else:
+            measurement_indices = []
+            f_meas_outcome = lambda x: 0
     else:
         measurement_indices = None
         f_meas_outcome = lambda x: x
@@ -94,13 +99,13 @@ def lstsq_data(
     cond_idxs = {i: 0 for i in range(cdim)}
     for i in range(bsize):
         midx = measurement_data[i]
-        midx_meas = midx[measurement_indices] if num_cond else midx
+        midx_meas = midx[measurement_indices]
         pidx = preparation_data[i]
         shots = shot_data[i]
         odata = outcome_data[i]
 
         # Get prep basis component
-        if preparation_basis:
+        if preparation_qubits:
             p_mat = np.transpose(preparation_basis.matrix(pidx, preparation_qubits))
         else:
             p_mat = None
@@ -119,7 +124,7 @@ def lstsq_data(
 
             # Check if new meas basis element and construct basis matrix
             store_mat = True
-            if measurement_basis:
+            if measurement_qubits:
                 if outcome_meas not in meas_cache:
                     meas_cache.add(outcome_meas)
                     mat = measurement_basis.matrix(midx_meas, outcome_meas, measurement_qubits)

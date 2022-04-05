@@ -159,25 +159,25 @@ class TomographyAnalysis(BaseAnalysis):
                 full_meas_qubits = [
                     q for i, q in enumerate(measurement_qubits) if i not in conditional_indices
                 ]
-            meas_dims = measurement_basis.matrix_shape(full_meas_qubits)
+            if full_meas_qubits:
+                meas_dims = measurement_basis.matrix_shape(full_meas_qubits)
 
-        # Check for both preparation and measurement data to determine if we are
-        # fitting a channel via QPT or a density matrix via QST
-        qpt = preparation_qubits and full_meas_qubits
-        if qpt:
+        if full_meas_qubits:
+            # QPT or QST
             input_dims = prep_dims
             output_dims = meas_dims
         else:
-            input_dims = (1,)
-            output_dims = meas_dims if full_meas_qubits else prep_dims
+            # QST of POVM effects
+            input_dims = meas_dims
+            output_dims = prep_dims
+
+        # Use preparation dim to set the expected trace of the fitted state.
+        # For QPT this is the input dimension, for QST this will always be 1.
+        trace = np.prod(prep_dims) if self.options.rescale_trace else None
 
         # Get tomography fitter function
         fitter = self._get_fitter(self.options.fitter)
         fitter_opts = self.options.fitter_options
-
-        # Use preparation dim to set the expected trace of the fitted state.
-        # For QPT this is the input dimension, for QST this will always be 1.
-        trace = np.prod(input_dims) if self.options.rescale_trace else None
 
         # Work around to set proper trace and trace preserving constraints for
         # cvxpy fitter
@@ -185,11 +185,13 @@ class TomographyAnalysis(BaseAnalysis):
             fitter_opts = fitter_opts.copy()
 
             # Add default value for CVXPY trace constraint if no user value is provided
+            # Use preparation dim to set the expected trace of the fitted state.
+            # For QPT this is the input dimension, for QST this will always be 1.
             if "trace" not in fitter_opts:
                 fitter_opts["trace"] = trace
 
             # By default add trace preserving constraint to cvxpy QPT fit
-            if qpt and "trace_preserving" not in fitter_opts:
+            if preparation_data.shape[1] > 0 and "trace_preserving" not in fitter_opts:
                 fitter_opts["trace_preserving"] = True
 
         # Run tomography fitter
@@ -323,6 +325,7 @@ class TomographyAnalysis(BaseAnalysis):
 
         # Convert class of value
         if input_dims and np.prod(input_dims) > 1:
+            print(input_dims, output_dims)
             value = Choi(fit, input_dims=input_dims, output_dims=output_dims)
         else:
             value = DensityMatrix(fit, dims=output_dims)
