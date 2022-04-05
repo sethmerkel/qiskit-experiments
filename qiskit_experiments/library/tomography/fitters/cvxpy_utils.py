@@ -192,27 +192,37 @@ def trace_constaint(
                    is required.
     Returns:
         A list of constraints on the real and imaginary parts.
+
+    Raises:
+        TypeError: if input variables are not valid.
     """
     if isinstance(mat_r, (list, tuple)):
         arg_r = cvxpy.sum(mat_r)
-    else:
+    elif isinstance(mat_r, Variable):
         arg_r = mat_r
+    else:
+        raise TypeError("Input must be a cvxpy variable or list of variables")
     cons = [cvxpy.trace(arg_r) == np.real(trace)]
+
     if hermitian:
         return cons
 
     # If not hermitian add imaginary trace constrant
     if isinstance(mat_i, (list, tuple)):
         arg_i = cvxpy.sum(mat_i)
-    else:
+    elif isinstance(mat_i, Variable):
         arg_i = mat_i
-        cons.append(cvxpy.trace(arg_i) == np.imag(trace))
+    else:
+        raise TypeError("Input must be a cvxpy variable or list of variables")
+    cons.append(cvxpy.trace(arg_i) == np.imag(trace))
+
     return cons
 
 
 def trace_preserving_constaint(
     mat_r: Union[Variable, List[Variable]],
     mat_i: Union[Variable, List[Variable]],
+    input_dim: Optional[int] = None,
     hermitian: bool = False,
 ) -> List[Constraint]:
     """Return CVXPY trace preserving constraints for a complex matrix.
@@ -220,30 +230,43 @@ def trace_preserving_constaint(
     Args:
         mat_r: The CVXPY variable for the real part of the matrix.
         mat_i: The CVXPY variable for the complex part of the matrix.
+        input_dim: Optional, the input dimension for the system channel if the input
+                   and output dimensions are not equal.
         hermitian: If the input variables are Hermitian, only the real trace constraint
                    is required.
 
     Returns:
         A list of constraints on the real and imaginary parts.
+
+    Raises:
+        TypeError: if input variables are not valid.
     """
     if isinstance(mat_r, (tuple, list)):
         sdim = mat_r[0].shape[0]
         arg_r = cvxpy.sum(mat_r)
-    else:
+    elif isinstance(mat_r, Variable):
         sdim = mat_r.shape[0]
         arg_r = mat_r
-    dim = int(np.sqrt(sdim))
-    ptr = partial_trace_super(dim, dim)
-    cons = [ptr @ cvxpy.vec(arg_r) == np.identity(dim).ravel()]
+    else:
+        raise TypeError("Input must be a cvxpy variable or list of variables")
+    if input_dim is None:
+        input_dim = int(np.sqrt(sdim))
+    output_dim = sdim // input_dim
+
+    ptr = partial_trace_super(input_dim, output_dim)
+    cons = [ptr @ cvxpy.vec(arg_r) == np.identity(input_dim).ravel()]
+
     if hermitian:
         return cons
 
     # If not hermitian add imaginary partial trace constrant
     if isinstance(mat_i, (tuple, list)):
         arg_r = cvxpy.sum(mat_i)
-    else:
+    elif isinstance(mat_i, Variable):
         arg_i = mat_i
-    cons.append(ptr @ cvxpy.vec(arg_i) == np.zeros(dim * dim))
+    else:
+        raise TypeError("Input must be a cvxpy variable or list of variables")
+    cons.append(ptr @ cvxpy.vec(arg_i) == np.zeros(input_dim ** 2))
     return cons
 
 

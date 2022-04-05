@@ -142,10 +142,6 @@ def cvxpy_linear_lstsq(
         conditional_indices=conditional_indices,
     )
 
-    if weights is not None:
-        weights = weights / np.sqrt(np.sum(weights**2))
-        probability_data = weights * probability_data
-
     # Since CVXPY only works with real variables we must specify the real
     # and imaginary parts of matrices seperately: rho = rho_r + 1j * rho_i
 
@@ -174,7 +170,10 @@ def cvxpy_linear_lstsq(
     # if a different trace constraint is specified above this will
     # cause the fitter to fail.
     if trace_preserving:
-        cons += cvxpy_utils.trace_preserving_constaint(rhos_r, rhos_i, hermitian=True)
+        if not preparation_qubits:
+            preparation_qubits = tuple(range(preparation_data.shape[1]))
+        input_dim = np.prod(preparation_basis.matrix_shape(preparation_qubits))
+        cons += cvxpy_utils.trace_preserving_constaint(rhos_r, rhos_i, input_dim=input_dim, hermitian=True)
 
     # OBJECTIVE FUNCTION
 
@@ -189,6 +188,10 @@ def cvxpy_linear_lstsq(
 
     # Construct block diagonal fit variable from conditional components
     # Construct objective function
+    if weights is not None:
+        weights = weights / np.sqrt(np.sum(weights**2))
+        probability_data = weights * probability_data
+
     if num_components > 1:
         if weights is None:
             bm_r = np.real(basis_matrix)
