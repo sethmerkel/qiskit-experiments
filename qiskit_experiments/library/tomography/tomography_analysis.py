@@ -325,7 +325,6 @@ class TomographyAnalysis(BaseAnalysis):
 
         # Convert class of value
         if input_dims and np.prod(input_dims) > 1:
-            print(input_dims, output_dims)
             value = Choi(fit, input_dims=input_dims, output_dims=output_dims)
         else:
             value = DensityMatrix(fit, dims=output_dims)

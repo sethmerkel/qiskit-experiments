@@ -518,10 +518,9 @@ def _conditional_basis_matrix(
     """Return matrix of conditional basis element diagonals."""
     if not conditional_indices:
         return np.eye(1, dtype=float)
-
     conditional_qubits = tuple(measurement_qubits[i] for i in conditional_indices)
     num_cond = len(conditional_indices)
-    cond_size = measurement_basis.matrix_shape(conditional_qubits)[0]
+    cond_size = np.prod(measurement_basis.matrix_shape(conditional_qubits))
     basis_mat_cond = np.eye(cond_size, dtype=float)
     for outcome in range(2**num_cond):
         basis_mat_cond[outcome] = np.real(
