@@ -26,6 +26,8 @@ Experiments
 
     StateTomography
     ProcessTomography
+    ConditionalStateTomography
+    ConditionalProcessTomography
 
 
 Analysis
@@ -65,6 +67,7 @@ Built in tomography basis classes
     basis.PauliMeasurementBasis
     basis.PauliPreparationBasis
     basis.Pauli6PreparationBasis
+    basis.ReadoutMitigatedMeasurementBasis
 
 Custom local tensor product basis classes
 
@@ -88,8 +91,12 @@ Abstract base classes
 """
 
 # Experiment Classes
-from .qst_experiment import StateTomography, StateTomographyAnalysis
-from .qpt_experiment import ProcessTomography, ProcessTomographyAnalysis
+from .qst_experiment import StateTomography, ConditionalStateTomography, StateTomographyAnalysis
+from .qpt_experiment import (
+    ProcessTomography,
+    ConditionalProcessTomography,
+    ProcessTomographyAnalysis,
+)
 
 # Basis Classes
 from . import basis

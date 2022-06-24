@@ -13,7 +13,7 @@
 Contrained convex least-squares tomography fitter.
 """
 
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Sequence, Tuple
 import numpy as np
 
 from qiskit_experiments.library.tomography.basis import (
@@ -33,8 +33,10 @@ def cvxpy_linear_lstsq(
     preparation_data: np.ndarray,
     measurement_basis: Optional[MeasurementBasis] = None,
     preparation_basis: Optional[PreparationBasis] = None,
-    measurement_qubits: Optional[Tuple[int, ...]] = None,
-    preparation_qubits: Optional[Tuple[int, ...]] = None,
+    measurement_qubits: Optional[Tuple[int]] = None,
+    preparation_qubits: Optional[Tuple[int]] = None,
+    conditional_indices: Optional[Tuple[int]] = None,
+    conditional_matrix: Optional[np.ndarray] = None,
     psd: bool = True,
     trace_preserving: bool = False,
     trace: Optional[float] = None,
@@ -101,16 +103,22 @@ def cvxpy_linear_lstsq(
         measurement_basis: Optional, measurement matrix basis.
         preparation_basis: Optional, preparation matrix basis.
         measurement_qubits: Optional, the physical qubits that were measured.
-                            If None they are assumed to be ``[0, ..., M-1]`` for
+                            If None they are assumed to be [0, ..., M-1] for
                             M measured qubits.
         preparation_qubits: Optional, the physical qubits that were prepared.
-                            If None they are assumed to be ``[0, ..., N-1]`` for
+                            If None they are assumed to be [0, ..., N-1] for
                             N preparated qubits.
+        conditional_indices: Optional, conditional measurement data indices.
+                             If set this will return a list of conditional
+                             fitted states conditioned on a fixed basis
+                             measurement of these qubits.
+        conditional_matrix: Optional matrix of coefficients for combining
+                            conditional state components in fit.
         psd: If True rescale the eigenvalues of fitted matrix to be positive
              semidefinite (default: True)
-        trace_preserving: Enforce the fitted matrix to be
-            trace preserving when fitting a Choi-matrix in quantum process
-            tomography (default: False).
+        trace_preserving: Enforce the fitted matrix to be trace preserving when
+                          fitting a Choi-matrix in quantum process
+                          tomography (default: False).
         trace: trace constraint for the fitted matrix (default: None).
         weights: Optional array of weights for least squares objective.
         kwargs: kwargs for cvxpy solver.
@@ -131,20 +139,30 @@ def cvxpy_linear_lstsq(
         preparation_basis=preparation_basis,
         measurement_qubits=measurement_qubits,
         preparation_qubits=preparation_qubits,
+        conditional_indices=conditional_indices,
     )
-
-    if weights is not None:
-        weights = weights / np.sqrt(np.sum(weights**2))
-        basis_matrix = weights[:, None] * basis_matrix
-        probability_data = weights * probability_data
 
     # Since CVXPY only works with real variables we must specify the real
-    # and imaginary parts of rho seperately: rho = rho_r + 1j * rho_i
+    # and imaginary parts of matrices seperately: rho = rho_r + 1j * rho_i
 
+    num_components = probability_data.shape[0]
     dim = int(np.sqrt(basis_matrix.shape[1]))
-    rho_r, rho_i, cons = cvxpy_utils.complex_matrix_variable(
-        dim, hermitian=True, psd=psd, trace=trace
-    )
+
+    # Generate list of conditional components for block diagonal matrix
+    # rho = sum_k |k><k| \otimes rho(k)
+    rhos_r = []
+    rhos_i = []
+    cons = []
+    for _ in range(num_components):
+        rho_r, rho_i, _cons = cvxpy_utils.complex_matrix_variable(dim, hermitian=True, psd=psd)
+        rhos_r.append(rho_r)
+        rhos_i.append(rho_i)
+        cons += _cons
+
+    # Add trace constraint. This contraint applies to the sum of the conditional
+    # components
+    if trace:
+        cons += cvxpy_utils.trace_constaint(rhos_r, rhos_i, trace=trace, hermitian=True)
 
     # Trace preserving constraint when fitting Choi-matrices for
     # quantum process tomography. Note that this adds an implicity
@@ -152,7 +170,10 @@ def cvxpy_linear_lstsq(
     # if a different trace constraint is specified above this will
     # cause the fitter to fail.
     if trace_preserving:
-        cons += cvxpy_utils.trace_preserving_constraint(rho_r, rho_i)
+        if not preparation_qubits:
+            preparation_qubits = tuple(range(preparation_data.shape[1]))
+        input_dim = np.prod(preparation_basis.matrix_shape(preparation_qubits))
+        cons += cvxpy_utils.trace_preserving_constaint(rhos_r, rhos_i, input_dim=input_dim, hermitian=True)
 
     # OBJECTIVE FUNCTION
 
@@ -164,9 +185,59 @@ def cvxpy_linear_lstsq(
     #                   + 1j * (bm_r * vec(rho_i) + bm_i * vec(rho_r))
     #                 = bm_r * vec(rho_r) - bm_i * vec(rho_i)
     # where we drop the imaginary part since the expectation value is real
-    bm_r = np.real(basis_matrix)
-    bm_i = np.imag(basis_matrix)
-    arg = bm_r @ cvxpy.vec(rho_r) - bm_i @ cvxpy.vec(rho_i) - probability_data
+
+    # Construct block diagonal fit variable from conditional components
+    # Construct objective function
+    if weights is not None:
+        weights = weights / np.sqrt(np.sum(weights**2))
+        probability_data = weights * probability_data
+
+    if num_components > 1:
+        if weights is None:
+            bm_r = np.real(basis_matrix)
+            bm_i = np.imag(basis_matrix)
+            bms_r = [bm_r] * num_components
+            bms_i = [bm_i] * num_components
+        else:
+            bms_r = []
+            bms_i = []
+            for k in range(num_components):
+                weighted_mat = weights[k][:, None] * basis_matrix
+                bms_r.append(np.real(weighted_mat))
+                bms_i.append(np.imag(weighted_mat))
+
+        # Stack lstsq objective from sum of components
+        if conditional_matrix is None:
+            vecs_r = [cvxpy.vec(rhos_r[k]) for k in range(num_components)]
+            vecs_i = [cvxpy.vec(rhos_i[k]) for k in range(num_components)]
+        else:
+            # Use conditional weights to combine states
+            vecs_r = [
+                cvxpy.vec(
+                    cvxpy.sum([conditional_matrix[j, k] * rhos_r[k] for k in range(num_components)])
+                )
+                for j in range(num_components)
+            ]
+            vecs_i = [
+                cvxpy.vec(
+                    cvxpy.sum([conditional_matrix[j, k] * rhos_i[k] for k in range(num_components)])
+                )
+                for j in range(num_components)
+            ]
+        args = [
+            bms_r[k] @ vecs_r[k] - bms_i[k] @ vecs_i[k] - probability_data[k]
+            for k in range(num_components)
+        ]
+        arg = cvxpy.hstack(args)
+    else:
+        # Non-conditional fitting
+        if weights is not None:
+            basis_matrix = weights[0][:, None] * basis_matrix
+        bm_r = np.real(basis_matrix)
+        bm_i = np.imag(basis_matrix)
+        arg = bm_r @ cvxpy.vec(rhos_r[0]) - bm_i @ cvxpy.vec(rhos_i[0]) - probability_data[0]
+
+    # Optimization problem
     obj = cvxpy.Minimize(cvxpy.norm(arg, p=2))
     prob = cvxpy.Problem(obj, cons)
 
@@ -175,12 +246,19 @@ def cvxpy_linear_lstsq(
     cvxpy_utils.solve_iteratively(prob, 5000, **kwargs)
 
     # Return optimal values and problem metadata
-    rho_fit = rho_r.value + 1j * rho_i.value
     metadata = {
         "cvxpy_solver": prob.solver_stats.solver_name,
         "cvxpy_status": prob.status,
     }
-    return rho_fit, metadata
+    if trace_preserving:
+        metadata["tp_constraint"] = True
+    if psd:
+        metadata["psd_constraint"] = True
+    if trace:
+        metadata["trace_constraint"] = trace
+
+    fits = [rhos_r[k].value + 1j * rhos_i[k].value for k in range(num_components)]
+    return fits, metadata
 
 
 @cvxpy_utils.requires_cvxpy
@@ -191,8 +269,9 @@ def cvxpy_gaussian_lstsq(
     preparation_data: np.ndarray,
     measurement_basis: Optional[MeasurementBasis] = None,
     preparation_basis: Optional[PreparationBasis] = None,
-    measurement_qubits: Optional[Tuple[int, ...]] = None,
-    preparation_qubits: Optional[Tuple[int, ...]] = None,
+    measurement_qubits: Optional[Tuple[int]] = None,
+    preparation_qubits: Optional[Tuple[int]] = None,
+    conditional_indices: Optional[Tuple[int]] = None,
     psd: bool = True,
     trace_preserving: bool = False,
     trace: Optional[float] = None,
@@ -239,11 +318,15 @@ def cvxpy_gaussian_lstsq(
         measurement_basis: Optional, measurement matrix basis.
         preparation_basis: Optional, preparation matrix basis.
         measurement_qubits: Optional, the physical qubits that were measured.
-                            If None they are assumed to be ``[0, ..., M-1]`` for
+                            If None they are assumed to be [0, ..., M-1] for
                             M measured qubits.
         preparation_qubits: Optional, the physical qubits that were prepared.
-                            If None they are assumed to be ``[0, ..., N-1]`` for
+                            If None they are assumed to be [0, ..., N-1] for
                             N preparated qubits.
+        conditional_indices: Optional, conditional measurement data indices.
+                             If set this will return a list of conditional
+                             fitted states conditioned on a fixed basis
+                             measurement of these qubits.
         psd: If True rescale the eigenvalues of fitted matrix to be positive
              semidefinite (default: True)
         trace_preserving: Enforce the fitted matrix to be
@@ -259,7 +342,9 @@ def cvxpy_gaussian_lstsq(
     Returns:
         The fitted matrix rho that maximizes the least-squares likelihood function.
     """
-    weights = lstsq_utils.binomial_weights(outcome_data, shot_data, beta=0.5)
+    weights = lstsq_utils.binomial_weights(
+        outcome_data, shot_data, beta=0.5, conditional_indices=conditional_indices
+    )
     return cvxpy_linear_lstsq(
         outcome_data,
         shot_data,
@@ -269,9 +354,176 @@ def cvxpy_gaussian_lstsq(
         preparation_basis=preparation_basis,
         measurement_qubits=measurement_qubits,
         preparation_qubits=preparation_qubits,
+        conditional_indices=conditional_indices,
         psd=psd,
         trace=trace,
         trace_preserving=trace_preserving,
         weights=weights,
         **kwargs,
     )
+
+
+@cvxpy_utils.requires_cvxpy
+def cvxpy_conditional_linear_lstsq(
+    outcome_data: np.ndarray,
+    shot_data: np.ndarray,
+    measurement_data: np.ndarray,
+    preparation_data: np.ndarray,
+    measurement_basis: Optional[MeasurementBasis] = None,
+    preparation_basis: Optional[PreparationBasis] = None,
+    measurement_qubits: Optional[Tuple[int]] = None,
+    preparation_qubits: Optional[Tuple[int]] = None,
+    conditional_indices: Optional[Tuple[int]] = None,
+    psd: bool = True,
+    trace_preserving: bool = False,
+    trace: Optional[float] = None,
+    weights: Optional[np.ndarray] = None,
+    **kwargs,
+) -> Dict:
+    r"""Constrained Gaussian linear least-squares tomography fitter.
+
+    Args:
+        outcome_data: measurement outcome frequency data.
+        shot_data: basis measurement total shot data.
+        measurement_data: measurement basis indice data.
+        preparation_data: preparation basis indice data.
+        measurement_basis: Optional, measurement matrix basis.
+        preparation_basis: Optional, preparation matrix basis.
+        measurement_qubits: Optional, the physical qubits that were measured.
+                            If None they are assumed to be [0, ..., M-1] for
+                            M measured qubits.
+        preparation_qubits: Optional, the physical qubits that were prepared.
+                            If None they are assumed to be [0, ..., N-1] for
+                            N preparated qubits.
+        conditional_indices: Optional, conditional measurement data indices.
+                             If set this will return a list of conditional
+                             fitted states conditioned on a fixed basis
+                             measurement of these qubits.
+        psd: If True rescale the eigenvalues of fitted matrix to be positive
+             semidefinite (default: True)
+        trace_preserving: Enforce the fitted matrix to be
+            trace preserving when fitting a Choi-matrix in quantum process
+            tomography (default: False).
+        trace: trace constraint for the fitted matrix (default: None).
+        weights: Optional array of weights for least squares objective.
+        kwargs: kwargs for cvxpy solver.
+
+    Raises:
+        QiskitError: If CVXPY is not installed on the current system.
+        AnalysisError: If analysis fails.
+
+    Returns:
+        The fitted matrix rho that maximizes the least-squares likelihood function.
+    """
+    conditional_matrix = _conditional_basis_matrix(
+        measurement_basis=measurement_basis,
+        measurement_qubits=measurement_qubits,
+        conditional_indices=conditional_indices,
+    )
+    return cvxpy_linear_lstsq(
+        outcome_data,
+        shot_data,
+        measurement_data,
+        preparation_data,
+        measurement_basis=measurement_basis,
+        preparation_basis=preparation_basis,
+        measurement_qubits=measurement_qubits,
+        preparation_qubits=preparation_qubits,
+        conditional_indices=conditional_indices,
+        conditional_matrix=conditional_matrix,
+        psd=psd,
+        trace=trace,
+        trace_preserving=trace_preserving,
+        weights=weights,
+        **kwargs,
+    )
+
+
+@cvxpy_utils.requires_cvxpy
+def cvxpy_conditional_gaussian_lstsq(
+    outcome_data: np.ndarray,
+    shot_data: np.ndarray,
+    measurement_data: np.ndarray,
+    preparation_data: np.ndarray,
+    measurement_basis: Optional[MeasurementBasis] = None,
+    preparation_basis: Optional[PreparationBasis] = None,
+    measurement_qubits: Optional[Tuple[int]] = None,
+    preparation_qubits: Optional[Tuple[int]] = None,
+    conditional_indices: Optional[Tuple[int]] = None,
+    psd: bool = True,
+    trace_preserving: bool = False,
+    trace: Optional[float] = None,
+    **kwargs,
+) -> Dict:
+    r"""Constrained conditional Gaussian linear least-squares tomography fitter.
+
+    Args:
+        outcome_data: measurement outcome frequency data.
+        shot_data: basis measurement total shot data.
+        measurement_data: measurement basis indice data.
+        preparation_data: preparation basis indice data.
+        measurement_basis: Optional, measurement matrix basis.
+        preparation_basis: Optional, preparation matrix basis.
+        measurement_qubits: Optional, the physical qubits that were measured.
+                            If None they are assumed to be [0, ..., M-1] for
+                            M measured qubits.
+        preparation_qubits: Optional, the physical qubits that were prepared.
+                            If None they are assumed to be [0, ..., N-1] for
+                            N preparated qubits.
+        conditional_indices: Optional, conditional measurement data indices.
+                             If set this will return a list of conditional
+                             fitted states conditioned on a fixed basis
+                             measurement of these qubits.
+        psd: If True rescale the eigenvalues of fitted matrix to be positive
+             semidefinite (default: True)
+        trace_preserving: Enforce the fitted matrix to be
+            trace preserving when fitting a Choi-matrix in quantum process
+            tomography (default: False).
+        trace: trace constraint for the fitted matrix (default: None).
+        kwargs: kwargs for cvxpy solver.
+
+    Raises:
+        QiskitError: If CVXPY is not installed on the current system.
+        AnalysisError: If analysis fails.
+
+    Returns:
+        The fitted matrix rho that maximizes the least-squares likelihood function.
+    """
+    weights = lstsq_utils.binomial_weights(
+        outcome_data, shot_data, beta=0.5, conditional_indices=conditional_indices
+    )
+    return cvxpy_conditional_linear_lstsq(
+        outcome_data,
+        shot_data,
+        measurement_data,
+        preparation_data,
+        measurement_basis=measurement_basis,
+        preparation_basis=preparation_basis,
+        measurement_qubits=measurement_qubits,
+        preparation_qubits=preparation_qubits,
+        conditional_indices=conditional_indices,
+        psd=psd,
+        trace=trace,
+        trace_preserving=trace_preserving,
+        weights=weights,
+        **kwargs,
+    )
+
+
+def _conditional_basis_matrix(
+    measurement_basis: MeasurementBasis,
+    measurement_qubits: Sequence[int],
+    conditional_indices: Sequence[int],
+) -> np.ndarray:
+    """Return matrix of conditional basis element diagonals."""
+    if not conditional_indices:
+        return np.eye(1, dtype=float)
+    conditional_qubits = tuple(measurement_qubits[i] for i in conditional_indices)
+    num_cond = len(conditional_indices)
+    cond_size = np.prod(measurement_basis.matrix_shape(conditional_qubits))
+    basis_mat_cond = np.eye(cond_size, dtype=float)
+    for outcome in range(2**num_cond):
+        basis_mat_cond[outcome] = np.real(
+            np.diag(measurement_basis.matrix((0,) * num_cond, outcome, conditional_qubits))
+        )
+    return basis_mat_cond

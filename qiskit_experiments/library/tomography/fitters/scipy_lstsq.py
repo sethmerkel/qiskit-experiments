@@ -32,8 +32,9 @@ def scipy_linear_lstsq(
     preparation_data: np.ndarray,
     measurement_basis: Optional[MeasurementBasis] = None,
     preparation_basis: Optional[PreparationBasis] = None,
-    measurement_qubits: Optional[Tuple[int, ...]] = None,
-    preparation_qubits: Optional[Tuple[int, ...]] = None,
+    measurement_qubits: Optional[Tuple[int]] = None,
+    preparation_qubits: Optional[Tuple[int]] = None,
+    conditional_indices: Optional[np.ndarray] = None,
     weights: Optional[np.ndarray] = None,
     **kwargs,
 ) -> Tuple[np.ndarray, Dict]:
@@ -76,11 +77,15 @@ def scipy_linear_lstsq(
         measurement_basis: Optional, measurement matrix basis.
         preparation_basis: Optional, preparation matrix basis.
         measurement_qubits: Optional, the physical qubits that were measured.
-                            If None they are assumed to be ``[0, ..., M-1]`` for
+                            If None they are assumed to be [0, ..., M-1] for
                             M measured qubits.
         preparation_qubits: Optional, the physical qubits that were prepared.
-                            If None they are assumed to be ``[0, ..., N-1]`` for
+                            If None they are assumed to be [0, ..., N-1] for
                             N preparated qubits.
+        conditional_indices: Optional, conditional measurement data indices.
+                             If set this will return a list of conditional
+                             fitted states conditioned on a fixed basis
+                             measurement of these qubits.
         weights: Optional array of weights for least squares objective.
         kwargs: additional kwargs for :func:`scipy.linalg.lstsq`.
 
@@ -99,26 +104,37 @@ def scipy_linear_lstsq(
         preparation_basis=preparation_basis,
         measurement_qubits=measurement_qubits,
         preparation_qubits=preparation_qubits,
+        conditional_indices=conditional_indices,
     )
-
-    if weights is not None:
-        basis_matrix = weights[:, None] * basis_matrix
-        probability_data = weights * probability_data
 
     # Perform least squares fit using Scipy.linalg lstsq function
     lstsq_options = {"check_finite": False, "lapack_driver": "gelsy"}
     for key, val in kwargs.items():
         lstsq_options[key] = val
-    sol, _, _, _ = la.lstsq(basis_matrix, probability_data, **lstsq_options)
 
-    # Reshape fit to a density matrix
-    size = len(sol)
-    dim = int(np.sqrt(size))
-    if dim * dim != size:
-        raise AnalysisError("Least-squares fitter: invalid result shape.")
-    rho_fit = np.reshape(sol, (dim, dim), order="F")
+    # Solve each conditional component independently
+    num_components = len(probability_data)
+    if weights is not None:
+        probability_data = weights * probability_data
 
-    return rho_fit, {}
+    fits = []
+    for i in range(num_components):
+        if weights is not None:
+            component_basis_matrix = weights[i][:, None] * basis_matrix
+        else:
+            component_basis_matrix = basis_matrix
+
+        sol, _, _, _ = la.lstsq(component_basis_matrix, probability_data[i], **lstsq_options)
+
+        # Reshape fit to a density matrix
+        size = len(sol)
+        dim = int(np.sqrt(size))
+        if dim * dim != size:
+            raise AnalysisError("Least-squares fitter: invalid result shape.")
+        fit = np.reshape(sol, (dim, dim), order="F")
+        fits.append(fit)
+
+    return fits, {}
 
 
 def scipy_gaussian_lstsq(
@@ -128,8 +144,9 @@ def scipy_gaussian_lstsq(
     preparation_data: np.ndarray,
     measurement_basis: Optional[MeasurementBasis] = None,
     preparation_basis: Optional[PreparationBasis] = None,
-    measurement_qubits: Optional[Tuple[int, ...]] = None,
-    preparation_qubits: Optional[Tuple[int, ...]] = None,
+    measurement_qubits: Optional[Tuple[int]] = None,
+    preparation_qubits: Optional[Tuple[int]] = None,
+    conditional_indices: Optional[np.ndarray] = None,
     **kwargs,
 ) -> Dict:
     r"""Gaussian linear least-squares tomography fitter.
@@ -171,11 +188,15 @@ def scipy_gaussian_lstsq(
         measurement_basis: Optional, measurement matrix basis.
         preparation_basis: Optional, preparation matrix basis.
         measurement_qubits: Optional, the physical qubits that were measured.
-                            If None they are assumed to be ``[0, ..., M-1]`` for
+                            If None they are assumed to be [0, ..., M-1] for
                             M measured qubits.
         preparation_qubits: Optional, the physical qubits that were prepared.
-                            If None they are assumed to be ``[0, ..., N-1]`` for
+                            If None they are assumed to be [0, ..., N-1] for
                             N preparated qubits.
+        conditional_indices: Optional, conditional measurement data indices.
+                             If set this will return a list of conditional
+                             fitted states conditioned on a fixed basis
+                             measurement of these qubits.
         kwargs: additional kwargs for :func:`scipy.linalg.lstsq`.
 
     Raises:
@@ -184,7 +205,9 @@ def scipy_gaussian_lstsq(
     Returns:
         The fitted matrix rho that maximizes the least-squares likelihood function.
     """
-    weights = lstsq_utils.binomial_weights(outcome_data, shot_data, beta=0.5)
+    weights = lstsq_utils.binomial_weights(
+        outcome_data, shot_data, beta=0.5, conditional_indices=conditional_indices
+    )
     return scipy_linear_lstsq(
         outcome_data,
         shot_data,
@@ -194,6 +217,7 @@ def scipy_gaussian_lstsq(
         preparation_basis=preparation_basis,
         measurement_qubits=measurement_qubits,
         preparation_qubits=preparation_qubits,
+        conditional_indices=conditional_indices,
         weights=weights,
         **kwargs,
     )

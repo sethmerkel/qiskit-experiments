@@ -13,7 +13,7 @@
 Fitter basis classes for tomography analysis.
 """
 from abc import ABC, abstractmethod
-from typing import Sequence, Tuple, Optional
+from typing import Sequence, Tuple
 import numpy as np
 from qiskit import QuantumCircuit
 
@@ -43,7 +43,7 @@ class BaseBasis(ABC):
         return self._name
 
     @abstractmethod
-    def index_shape(self, qubits: Sequence[int]) -> Tuple[int, ...]:
+    def index_shape(self, qubits: Sequence[int]) -> Tuple[int]:
         """Return the shape for the specified number of indices.
 
         Args:
@@ -54,25 +54,15 @@ class BaseBasis(ABC):
         """
 
     @abstractmethod
-    def circuit(
-        self, index: Sequence[int], qubits: Optional[Sequence[int]] = None
-    ) -> QuantumCircuit:
+    def circuit(self, index: Sequence[int], qubits: Sequence[int]) -> QuantumCircuit:
         """Return the basis preparation circuit.
 
         Args:
             index: a list of basis elements to tensor together.
-            qubits: Optional, the physical qubit subsystems for the index.
-                    If None this will be set to ``(0, ..., N-1)`` for a
-                    length N index.
+            qubits: The physical qubit subsystems for the index.
 
         Returns:
-            The logical basis circuit for the specified index and qubits.
-
-        .. note::
-
-            This returns a logical circuit on the specified number of qubits
-            and should be remapped to the corresponding physical qubits
-            during experiment transpilation.
+            The basis circuit for the specified index and qubits.
         """
 
 
@@ -82,11 +72,9 @@ class PreparationBasis(BaseBasis):
     Subclasses should implement the following abstract methods to
     define a preparation basis:
 
-    * The :meth:`circuit` method which returns the logical preparation
+    * The :meth:`circuit` method which returns the preparation
       :class:`.QuantumCircuit` for basis element index on the specified
-      qubits. This circuit should be a logical circuit on the specified
-      number of qubits and will be remapped to the corresponding physical
-      qubits during transpilation.
+      qubits.
 
     * The :meth:`matrix` method which returns the density matrix prepared
       by the bases element index on the specified qubits.
@@ -96,14 +84,20 @@ class PreparationBasis(BaseBasis):
 
     * The :meth:`matrix_shape` method which returns the shape of subsystem
       dimensions of the density matrix state on the specified qubits.
+
+    .. note::
+
+      The number of qubits and number of index elements do not necessarily
+      need to be the same, it is left up to the implementation of the basis
+      subclass.
     """
 
     @abstractmethod
-    def matrix_shape(self, qubits: Sequence[int]) -> Tuple[int, ...]:
+    def matrix_shape(self, qubits: Sequence[int]) -> Tuple[int]:
         """Return the shape of subsystem dimensions of a matrix element."""
 
     @abstractmethod
-    def matrix(self, index: Sequence[int], qubits: Optional[Sequence[int]] = None) -> np.ndarray:
+    def matrix(self, index: Sequence[int], qubits: Sequence[int]) -> np.ndarray:
         """Return the density matrix data array for the index and qubits.
 
         This state is used by tomography fitters for reconstruction and should
@@ -112,9 +106,7 @@ class PreparationBasis(BaseBasis):
 
         Args:
             index: a list of subsystem basis indices.
-            qubits: Optional, the physical qubit subsystems for the index.
-                    If None this will be set to ``(0, ..., N-1)`` for a
-                    length N index.
+            qubits: The physical qubit subsystems for the index.
 
         Returns:
             The density matrix prepared by the specified index and qubits.
@@ -127,13 +119,11 @@ class MeasurementBasis(BaseBasis):
     Subclasses should implement the following abstract methods to
     define a preparation basis:
 
-    * The :meth:`circuit` method which returns the logical measurement
+    * The :meth:`circuit` method which returns the measurement
       :class:`.QuantumCircuit` for basis element index on the specified
-      physical qubits. This circuit should be a logical circuit on the
-      specified number of qubits and will be remapped to the corresponding
-      physical qubits during transpilation. It should include classical
-      bits and the measure instructions for the basis measurement storing
-      the outcome value in these bits.
+      qubits. This circuit should include classical bits and the measure
+      instructions for the basis measurement storing the outcome value
+      in these bits.
 
     * The :meth:`matrix` method which returns the POVM element corresponding
       to the basis element index and measurement outcome on the specified
@@ -148,20 +138,24 @@ class MeasurementBasis(BaseBasis):
 
     * The :meth:`outcome_shape` method which returns the shape of allowed
       outcome values for a measurement of specified qubits.
+
+    .. note::
+
+      The number of qubits and number of index elements do not necessarily
+      need to be the same, it is left up to the implementation of the basis
+      subclass.
     """
 
     @abstractmethod
-    def outcome_shape(self, qubits: Sequence[int]) -> Tuple[int, ...]:
+    def outcome_shape(self, qubits: Sequence[int]) -> Tuple[int]:
         """Return the shape of allowed measurement outcomes on specified qubits."""
 
     @abstractmethod
-    def matrix_shape(self, qubits: Sequence[int]) -> Tuple[int, ...]:
+    def matrix_shape(self, qubits: Sequence[int]) -> Tuple[int]:
         """Return the shape of subsystem dimensions of a POVM matrix element."""
 
     @abstractmethod
-    def matrix(
-        self, index: Sequence[int], outcome: int, qubits: Optional[Sequence[int]] = None
-    ) -> np.ndarray:
+    def matrix(self, index: Sequence[int], outcome: int, qubits: Sequence[int]) -> np.ndarray:
         """Return the POVM element for the basis index and outcome.
 
         This POVM element is used by tomography fitters for reconstruction and
@@ -171,9 +165,7 @@ class MeasurementBasis(BaseBasis):
         Args:
             index: a list of subsystem basis indices.
             outcome: the composite system measurement outcome.
-            qubits: Optional, the physical qubit subsystems for the index.
-                    If None this will be set to ``(0, ..., N-1)`` for a
-                    length N index.
+            qubits: The physical qubit subsystems for the index.
 
         Returns:
             The POVM matrix for the specified index and qubits.

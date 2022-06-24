@@ -145,3 +145,67 @@ class ProcessTomography(TomographyExperiment):
         chan_state = partial_trace(chan_state, tr_qargs)
         channel = Choi(chan_state.data, input_dims=[2] * num_prep, output_dims=[2] * num_meas)
         return channel
+
+
+class ConditionalProcessTomography(TomographyExperiment):
+    """Conditional quantum process tomography experiment.
+
+    # section: overview
+        TODO
+
+    # section: analysis_ref
+        :py:class:`ProcessTomographyAnalysis`
+
+    # section: see_also
+        qiskit_experiments.library.tomography.tomography_experiment.TomographyExperiment
+
+    """
+
+    def __init__(
+        self,
+        circuit: Union[QuantumCircuit, Instruction, BaseOperator],
+        measurement_basis: basis.MeasurementBasis = basis.PauliMeasurementBasis(),
+        measurement_qubits: Optional[Sequence[int]] = None,
+        preparation_basis: basis.PreparationBasis = basis.PauliPreparationBasis(),
+        preparation_qubits: Optional[Sequence[int]] = None,
+        conditional_indices: Sequence[int] = None,
+        basis_indices: Optional[Iterable[Tuple[List[int], List[int]]]] = None,
+        qubits: Optional[Sequence[int]] = None,
+    ):
+        """Initialize a quantum process tomography experiment.
+
+        Args:
+            circuit: the quantum process circuit. If not a quantum circuit
+                it must be a class that can be appended to a quantum circuit.
+            measurement_basis: Tomography basis for measurements. If not specified the
+                default basis is the :class:`~basis.PauliMeasurementBasis`.
+            measurement_qubits: Optional, the qubits to be measured. These should refer
+                to the logical qubits in the state circuit. If None all qubits
+                in the state circuit will be measured.
+            preparation_basis: Tomography basis for measurements. If not specified the
+                        default basis is the :class:`~basis.PauliPreparationBasis`.
+            preparation_qubits: Optional, the qubits to be prepared. These should refer
+                to the logical qubits in the process circuit. If None all qubits
+                in the process circuit will be prepared.
+            conditional_indices: Indices of measurement qubits that should be treated
+                                 as conditional qubits for measurement.
+            basis_indices: Optional, a list of basis indices for generating partial
+                tomography measurement data. Each item should be given as a pair of
+                lists of preparation and measurement basis configurations
+                ``([p[0], p[1], ..], m[0], m[1], ...])``, where ``p[i]`` is the
+                preparation basis index, and ``m[i]`` is the measurement basis index
+                for qubit-i. If not specified full tomography for all indices of the
+                preparation and measurement bases will be performed.
+            qubits: Optional, the physical qubits for the initial state circuit.
+        """
+        super().__init__(
+            circuit,
+            measurement_basis=measurement_basis,
+            measurement_qubits=measurement_qubits,
+            preparation_basis=preparation_basis,
+            preparation_qubits=preparation_qubits,
+            conditional_indices=conditional_indices,
+            basis_indices=basis_indices,
+            qubits=qubits,
+            analysis=ProcessTomographyAnalysis(),
+        )

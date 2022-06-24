@@ -45,9 +45,7 @@ class TomographyExperiment(BaseExperiment):
 
         """
         options = super()._default_experiment_options()
-
         options.basis_indices = None
-
         return options
 
     def __init__(
@@ -58,6 +56,7 @@ class TomographyExperiment(BaseExperiment):
         measurement_qubits: Optional[Sequence[int]] = None,
         preparation_basis: Optional[PreparationBasis] = None,
         preparation_qubits: Optional[Sequence[int]] = None,
+        conditional_indices: Sequence[int] = None,
         basis_indices: Optional[Iterable[Tuple[List[int], List[int]]]] = None,
         qubits: Optional[Sequence[int]] = None,
         analysis: Optional[TomographyAnalysis] = None,
@@ -74,6 +73,8 @@ class TomographyExperiment(BaseExperiment):
             preparation_basis: Tomography basis for measurements.
             preparation_qubits: Optional, the qubits to be prepared. These should refer
                 to the logical qubits in the process circuit.
+            conditional_indices: Indices of measurement qubits that should be treated
+                                 as conditional qubits for measurement.
             basis_indices: Optional, the basis elements to be measured. If None
                 All basis elements will be measured.
             qubits: Optional, the physical qubits for the initial state circuit.
@@ -137,6 +138,9 @@ class TomographyExperiment(BaseExperiment):
             self._prep_qubits = tuple()
             self._prep_physical_qubits = tuple()
 
+        # Conditional indices
+        self._conditional_indices = tuple(conditional_indices) if conditional_indices else tuple()
+
         # Configure experiment options
         if basis_indices:
             self.set_experiment_options(basis_indices=basis_indices)
@@ -145,8 +149,12 @@ class TomographyExperiment(BaseExperiment):
         analysis_options = {}
         if measurement_basis:
             analysis_options["measurement_basis"] = measurement_basis
+            analysis_options["measurement_qubits"] = self._meas_physical_qubits
         if preparation_basis:
             analysis_options["preparation_basis"] = preparation_basis
+            analysis_options["preparation_qubits"] = self._prep_physical_qubits
+        if conditional_indices:
+            analysis_options["conditional_indices"] = conditional_indices
 
         self.analysis.set_options(**analysis_options)
 
@@ -195,22 +203,40 @@ class TomographyExperiment(BaseExperiment):
             circuits.append(circ)
         return circuits
 
-    def _metadata(self):
-        metadata = super()._metadata()
+    def _additional_metadata(self):
+        meta = {}
         if self._meas_physical_qubits:
-            metadata["m_qubits"] = list(self._meas_physical_qubits)
+            meta["m_qubits"] = list(self._meas_physical_qubits)
         if self._prep_physical_qubits:
-            metadata["p_qubits"] = list(self._prep_physical_qubits)
-        return metadata
+            meta["p_qubits"] = list(self._prep_physical_qubits)
+        if self._conditional_indices:
+            meta["c_indices"] = list(self._conditional_indices)
+        return meta
 
     def _basis_indices(self):
         """Return list of basis element indices"""
         basis_indices = self.experiment_options.basis_indices
         if basis_indices is not None:
-            return basis_indices
+            if not self._conditional_indices:
+                return basis_indices
+            # Pad with conditional indices
+            padded = []
+            for prep, meas in basis_indices:
+                padded_meas = tuple(
+                    0 if i in self._conditional_indices else val for i, val in enumerate(meas)
+                )
+                padded.append((prep, padded_meas))
+            return padded
         if self._meas_circ_basis:
             meas_shape = self._meas_circ_basis.index_shape(self._meas_physical_qubits)
-            meas_elements = product(*[range(i) for i in meas_shape])
+            if self._conditional_indices:
+                ranges = [
+                    (0,) if i in self._conditional_indices else range(num)
+                    for i, num in enumerate(meas_shape)
+                ]
+            else:
+                ranges = [range(i) for i in meas_shape]
+            meas_elements = product(*ranges)
         else:
             meas_elements = [None]
         if self._prep_circ_basis:
