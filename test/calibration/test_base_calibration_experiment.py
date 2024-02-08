@@ -87,8 +87,9 @@ class TestBaseCalibrationClass(QiskitExperimentsTestCase):
             new_value=ref_new_value,
             param_name="to_calibrate",
             sched_name="test",
+            circuits=[QuantumCircuit(1)],
         )
-        exp.run(backend).block_for_results()
+        self.assertExperimentDone(exp.run(backend))
 
         # Get new value
         new_value = cals.get_parameter_value("to_calibrate", (0,), "test")
@@ -131,9 +132,10 @@ class TestBaseCalibrationClass(QiskitExperimentsTestCase):
             new_value=999999,
             param_name="to_calibrate",
             sched_name="test",
+            circuits=[QuantumCircuit(1)],
         )
         exp.analysis.set_options(return_value=ref_new_value)  # Update analysis option here
-        exp.run(backend).block_for_results()
+        self.assertExperimentDone(exp.run(backend))
 
         # Get new value
         new_value = cals.get_parameter_value("to_calibrate", (0,), "test")
@@ -176,12 +178,13 @@ class TestBaseCalibrationClass(QiskitExperimentsTestCase):
             new_value=99999,
             param_name="to_calibrate",
             sched_name="test",
+            circuits=[QuantumCircuit(1)],
         )
 
         user_analysis = DoNothingAnalysis()
         user_analysis.set_options(return_value=ref_new_value)
         exp.analysis = user_analysis  # Update analysis instance itself here
-        exp.run(backend).block_for_results()
+        self.assertExperimentDone(exp.run(backend))
 
         # Get new value
         new_value = cals.get_parameter_value("to_calibrate", (0,), "test")
@@ -231,6 +234,7 @@ class TestBaseCalibrationClass(QiskitExperimentsTestCase):
             new_value=ref_new_value1,
             param_name="to_calibrate1",
             sched_name="test",
+            circuits=[QuantumCircuit(1)],
         )
         exp2 = MockCalExperiment(
             physical_qubits=(0,),
@@ -238,9 +242,10 @@ class TestBaseCalibrationClass(QiskitExperimentsTestCase):
             new_value=ref_new_value2,
             param_name="to_calibrate2",
             sched_name="test",
+            circuits=[QuantumCircuit(1)],
         )
-        batch_exp = BatchExperiment([exp1, exp2], backend=backend)
-        batch_exp.run(backend).block_for_results()
+        batch_exp = BatchExperiment([exp1, exp2], flatten_results=False, backend=backend)
+        self.assertExperimentDone(batch_exp.run(backend))
 
         # Get new value
         new_value1 = cals.get_parameter_value("to_calibrate1", (0,), "test")
@@ -301,6 +306,7 @@ class TestBaseCalibrationClass(QiskitExperimentsTestCase):
             new_value=ref_new_value1,
             param_name="to_calibrate1",
             sched_name="test1",
+            circuits=[QuantumCircuit(1)],
         )
         exp2 = MockCalExperiment(
             physical_qubits=(1,),
@@ -308,9 +314,10 @@ class TestBaseCalibrationClass(QiskitExperimentsTestCase):
             new_value=ref_new_value2,
             param_name="to_calibrate2",
             sched_name="test2",
+            circuits=[QuantumCircuit(1)],
         )
-        batch_exp = ParallelExperiment([exp1, exp2], backend=backend)
-        batch_exp.run(backend).block_for_results()
+        batch_exp = ParallelExperiment([exp1, exp2], flatten_results=False, backend=backend)
+        self.assertExperimentDone(batch_exp.run(backend))
 
         # Get new value
         new_value1 = cals.get_parameter_value("to_calibrate1", (0,), "test1")

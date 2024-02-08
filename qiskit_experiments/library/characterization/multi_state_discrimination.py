@@ -21,7 +21,6 @@ from qiskit.providers.options import Options
 from qiskit.pulse import ScheduleBlock
 from qiskit.qobj.utils import MeasLevel, MeasReturnType
 from qiskit_experiments.framework import BaseExperiment
-from qiskit_experiments.warnings import qubit_deprecate
 from qiskit_experiments.library.characterization import MultiStateDiscriminationAnalysis
 
 
@@ -56,7 +55,7 @@ class MultiStateDiscrimination(BaseExperiment):
 
     # section: reference
         `Qiskit Textbook\
-        <https://qiskit.org/textbook/ch-quantum-hardware/accessing_higher_energy_states.html>`_
+        <https://github.com/Qiskit/textbook/blob/main/notebooks/quantum-hardware-pulses/accessing_higher_energy_states.ipynb>`_
 
     """
 
@@ -87,7 +86,6 @@ class MultiStateDiscrimination(BaseExperiment):
 
         return options
 
-    @qubit_deprecate()
     def __init__(
         self,
         physical_qubits: Sequence[int],

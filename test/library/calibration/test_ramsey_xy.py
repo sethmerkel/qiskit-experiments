@@ -16,8 +16,8 @@ import unittest
 from test.base import QiskitExperimentsTestCase
 
 from ddt import ddt, data, named_data
-from qiskit.providers.fake_provider import FakeArmonkV2
 from qiskit_aer import AerSimulator
+from qiskit_ibm_runtime.fake_provider import FakeArmonkV2
 
 from qiskit_experiments.calibration_management.calibrations import Calibrations
 from qiskit_experiments.calibration_management.basis_gate_library import FixedFrequencyTransmon
@@ -76,7 +76,7 @@ class TestRamseyXY(QiskitExperimentsTestCase):
 
         tol = 1e4  # 10 kHz resolution
 
-        freq_name = self.cals.__drive_freq_parameter__
+        freq_name = "drive_freq"
 
         # Check qubit frequency before running the cal
         f01 = self.cals.get_parameter_value(freq_name, 0)
@@ -113,8 +113,7 @@ class TestRamseyXY(QiskitExperimentsTestCase):
 
         expt = FrequencyCal([0], self.cals, backend, auto_update=True)
         expt.analysis = NoResults()
-        expdata = expt.run()
-        expdata.block_for_results(timeout=3)
+        expdata = expt.run().block_for_results(timeout=3)
         self.assertEqual(expdata.analysis_status(), AnalysisStatus.ERROR)
 
     def test_ramseyxy_experiment_config(self):
@@ -122,22 +121,28 @@ class TestRamseyXY(QiskitExperimentsTestCase):
         exp = RamseyXY([0])
         loaded_exp = RamseyXY.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)
 
     def test_ramseyxy_roundtrip_serializable(self):
         """Test round trip JSON serialization"""
         exp = RamseyXY([0])
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        self.assertRoundTripSerializable(exp)
+
+    def test_circuit_roundtrip_serializable(self):
+        """Test round trip JSON serialization"""
+        backend = FakeArmonkV2()
+        exp = RamseyXY([0], backend=backend)
+        self.assertRoundTripSerializable(exp._transpiled_circuits())
 
     def test_cal_experiment_config(self):
         """Test FrequencyCal config roundtrips"""
         exp = FrequencyCal([0], self.cals)
         loaded_exp = FrequencyCal.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)
 
     @unittest.skip("Cal experiments are not yet JSON serializable")
     def test_freqcal_roundtrip_serializable(self):
         """Test round trip JSON serialization"""
         exp = FrequencyCal([0], self.cals)
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        self.assertRoundTripSerializable(exp)

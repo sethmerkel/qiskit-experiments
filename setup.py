@@ -18,6 +18,8 @@ from setuptools import setup, find_packages
 with open("requirements.txt", encoding="utf-8") as f:
     REQUIREMENTS = f.read().splitlines()
 
+with open("requirements-extras.txt", encoding="utf-8") as f:
+    EXTRAS = f.read().splitlines()
 
 version_path = os.path.abspath(
     os.path.join(os.path.join(os.path.dirname(__file__), "qiskit_experiments"), "VERSION.txt")
@@ -36,9 +38,9 @@ setup(
     description="Software for developing quantum computing programs",
     long_description=README,
     long_description_content_type="text/markdown",
-    url="https://github.com/Qiskit/qiskit-experiments",
+    url="https://github.com/Qiskit-Extensions/qiskit-experiments",
     author="Qiskit Development Team",
-    author_email="hello@qiskit.org",
+    author_email="qiskit@us.ibm.com",
     license="Apache 2.0",
     classifiers=[
         "Environment :: Console",
@@ -49,22 +51,28 @@ setup(
         "Operating System :: MacOS",
         "Operating System :: POSIX :: Linux",
         "Programming Language :: Python :: 3 :: Only",
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "Topic :: Scientific/Engineering",
     ],
     keywords="qiskit sdk quantum",
     packages=find_packages(exclude=["test*"]),
     install_requires=REQUIREMENTS,
+    extras_require={"extras": EXTRAS},
     include_package_data=True,
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     project_urls={
-        "Bug Tracker": "https://github.com/Qiskit/qiskit-experiments/issues",
-        "Documentation": "https://qiskit.org/documentation/",
-        "Source Code": "https://github.com/Qiskit/qiskit-experiments",
+        "Bug Tracker": "https://github.com/Qiskit-Extensions/qiskit-experiments/issues",
+        "Documentation": "https://qiskit-extensions.github.io/qiskit-experiments",
+        "Source Code": "https://github.com/Qiskit-Extensions/qiskit-experiments",
     },
     zip_safe=False,
+    entry_points={
+        "qiskit.synthesis": [
+            "clifford.rb_default = qiskit_experiments.library.randomized_benchmarking.clifford_synthesis:RBDefaultCliffordSynthesis",
+        ],
+    },
 )

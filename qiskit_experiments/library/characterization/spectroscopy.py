@@ -17,14 +17,12 @@ from typing import Iterable, Optional, Sequence
 
 import numpy as np
 from qiskit import QuantumCircuit
-from qiskit import pulse
 from qiskit.exceptions import QiskitError
 from qiskit.providers import Backend
 from qiskit.qobj.utils import MeasLevel
 
 from qiskit_experiments.framework import BaseAnalysis, BaseExperiment, Options
 from qiskit_experiments.curve_analysis import ResonanceAnalysis
-from qiskit_experiments.warnings import qubit_deprecate
 
 
 class Spectroscopy(BaseExperiment, ABC):
@@ -62,7 +60,6 @@ class Spectroscopy(BaseExperiment, ABC):
 
         return options
 
-    @qubit_deprecate()
     def __init__(
         self,
         physical_qubits: Sequence[int],
@@ -111,19 +108,13 @@ class Spectroscopy(BaseExperiment, ABC):
         which depends on the nature of the spectroscopy experiment.
         """
 
-    def _add_metadata(self, circuit: QuantumCircuit, freq: float, sched: pulse.ScheduleBlock):
+    def _add_metadata(self, circuit: QuantumCircuit, freq: float):
         """Helper method to add the metadata to avoid code duplication with subclasses."""
 
         if not self._absolute:
             freq += self._backend_center_frequency
 
-        circuit.metadata = {
-            "experiment_type": self._type,
-            "qubits": self.physical_qubits,
-            "xval": np.round(freq, decimals=3),
-            "unit": "Hz",
-            "schedule": str(sched),
-        }
+        circuit.metadata = {"xval": np.round(freq, decimals=3)}
 
     def _metadata(self):
         metadata = super()._metadata()

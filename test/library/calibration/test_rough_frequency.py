@@ -28,7 +28,7 @@ class TestRoughFrequency(QiskitExperimentsTestCase):
     def setUp(self):
         """Setup the tests."""
         super().setUp()
-        self.backend = SingleTransmonTestBackend(noise=False)
+        self.backend = SingleTransmonTestBackend(noise=False, atol=1e-3)
 
     def test_init(self):
         """Test that initialization."""
@@ -53,12 +53,14 @@ class TestRoughFrequency(QiskitExperimentsTestCase):
 
         freq01 = BackendData(self.backend).drive_freqs[0]
 
-        backend_5mhz = SingleTransmonTestBackend(qubit_frequency=freq01 + 5e6, noise=False)
+        backend_5mhz = SingleTransmonTestBackend(
+            qubit_frequency=freq01 + 5e6, noise=False, atol=1e-3
+        )
 
         library = FixedFrequencyTransmon()
         cals = Calibrations.from_backend(self.backend, libraries=[library])
 
-        prev_freq = cals.get_parameter_value(cals.__drive_freq_parameter__, (0,))
+        prev_freq = cals.get_parameter_value("drive_freq", (0,))
         self.assertEqual(prev_freq, freq01)
 
         frequencies = np.linspace(freq01 - 10.0e6, freq01 + 10.0e6, 11)
@@ -69,7 +71,7 @@ class TestRoughFrequency(QiskitExperimentsTestCase):
         self.assertExperimentDone(expdata)
 
         # Check the updated frequency which should be shifted by 5MHz.
-        post_freq = cals.get_parameter_value(cals.__drive_freq_parameter__, (0,))
+        post_freq = cals.get_parameter_value("drive_freq", (0,))
         self.assertTrue(abs(post_freq - freq01 - 5e6) < 1e6)
 
     def test_experiment_config(self):
@@ -79,4 +81,4 @@ class TestRoughFrequency(QiskitExperimentsTestCase):
         exp = RoughFrequencyCal([0], cals, frequencies)
         loaded_exp = RoughFrequencyCal.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)

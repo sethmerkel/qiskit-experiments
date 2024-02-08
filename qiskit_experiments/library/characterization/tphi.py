@@ -19,7 +19,6 @@ import numpy as np
 from qiskit import QiskitError
 from qiskit.providers import Backend
 from qiskit_experiments.framework.composite.batch_experiment import BatchExperiment
-from qiskit_experiments.warnings import qubit_deprecate
 from qiskit_experiments.library.characterization import (
     T1,
     T2Ramsey,
@@ -64,7 +63,6 @@ class Tphi(BatchExperiment):
 
     """
 
-    @qubit_deprecate()
     def __init__(
         self,
         physical_qubits: Sequence[int],
@@ -120,7 +118,12 @@ class Tphi(BatchExperiment):
         analysis = TphiAnalysis([exp_t1.analysis, exp_t2.analysis])
 
         # Create batch experiment
-        super().__init__([exp_t1, exp_t2], backend=backend, analysis=analysis)
+        super().__init__(
+            [exp_t1, exp_t2],
+            flatten_results=True,
+            backend=backend,
+            analysis=analysis,
+        )
         self.set_experiment_options(**exp_options)
 
     def set_experiment_options(self, **fields):

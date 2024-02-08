@@ -21,11 +21,12 @@ from typing import Any, Dict, Union, List, Tuple, Optional, Iterable, Callable
 import numpy as np
 import uncertainties
 from uncertainties.unumpy import uarray
+
+from qiskit.utils.deprecation import deprecate_func
+
 from qiskit_experiments.exceptions import AnalysisError
-from qiskit_experiments.warnings import deprecated_function, deprecated_class
 
 
-@deprecated_class("0.5", msg="SeriesDef is now replaced with LMFIT Model.")
 @dataclasses.dataclass(frozen=True)
 class SeriesDef:
     """A dataclass to describe the definition of the curve.
@@ -61,6 +62,16 @@ class SeriesDef:
     canvas: Optional[int] = None
     model_description: Optional[str] = None
     signature: Tuple[str, ...] = dataclasses.field(init=False)
+
+    @deprecate_func(
+        since="0.5",
+        additional_msg="SeriesDef has been replaced by the LMFIT module.",
+        removal_timeline="after 0.6",
+        package_name="qiskit-experiments",
+    )
+    def __init__(self, *args, **kwargs):
+        self.args = args
+        self.kwargs = kwargs
 
     def __post_init__(self):
         """Parse the fit function signature to extract the names of the variables.
@@ -100,6 +111,15 @@ class CurveData:
     shots: np.ndarray
     data_allocation: np.ndarray
     labels: List[str]
+
+    @deprecate_func(
+        since="0.6",
+        additional_msg="CurveData is replaced by `ScatterTable`'s DataFrame representation.",
+        removal_timeline="after 0.7",
+        package_name="qiskit-experiments",
+    )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     def get_subset_of(self, index: Union[str, int]) -> "CurveData":
         """Filter data by series name or index.
@@ -215,10 +235,13 @@ class CurveFitResult:
                 )
             else:
                 # Invalid covariance matrix. Std dev is set to nan, i.e. not computed.
-                ufloat_fitvals = uarray(
-                    nominal_values=[self.params[name] for name in self.var_names],
-                    std_devs=np.full(len(self.var_names), np.nan),
-                )
+                with np.errstate(invalid="ignore"):
+                    # Setting std_devs to NaN will trigger floating point exceptions
+                    # which we can ignore. See https://stackoverflow.com/q/75656026
+                    ufloat_fitvals = uarray(
+                        nominal_values=[self.params[name] for name in self.var_names],
+                        std_devs=np.full(len(self.var_names), np.nan),
+                    )
             # Combine fixed params and fitting variables into a single dictionary
             # Fixed parameter has zero std_dev
             ufloat_params = {}
@@ -248,11 +271,6 @@ class CurveFitResult:
 
         setattr(self, "_correl", correl)
         return correl
-
-    @deprecated_function("0.5", "Use '.ufloat_params' which returns a dictionary instead.")
-    def fitval(self, key: str) -> uncertainties.UFloat:
-        """Deprecated. Return UFloat parameter specified by the key."""
-        return self.ufloat_params[key]
 
     def __str__(self):
         ret = "CurveFitResult:"
@@ -328,9 +346,6 @@ class CurveFitResult:
         return cls(**value)
 
 
-@deprecated_class(
-    "0.5", msg="Fit data is replaced with 'CurveFitResult' based on LMFIT minimizer result."
-)
 @dataclasses.dataclass(frozen=True)
 class FitData:
     """A dataclass to store the outcome of the fitting.
@@ -352,6 +367,15 @@ class FitData:
     dof: int
     x_data: np.ndarray
     y_data: np.ndarray
+
+    @deprecate_func(
+        since="0.5",
+        additional_msg="Fit data is replaced with 'CurveFitResult' based on LMFIT minimizer result.",
+        removal_timeline="after 0.6",
+        package_name="qiskit-experiments",
+    )
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     @property
     def x_range(self) -> Tuple[float, float]:
@@ -470,7 +494,7 @@ class OptionsDict(dict):
     def format(value: Any) -> Any:
         """Format dictionary value.
 
-        Subcasses may override this method to provide their own validation.
+        Subclasses may override this method to provide their own validation.
 
         Args:
             value: New value to assign.

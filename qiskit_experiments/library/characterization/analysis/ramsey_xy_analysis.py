@@ -102,7 +102,7 @@ class RamseyXYAnalysis(curve.CurveAnalysis):
     def _generate_fit_guesses(
         self,
         user_opt: curve.FitOptions,
-        curve_data: curve.CurveData,
+        curve_data: curve.ScatterTable,
     ) -> Union[curve.FitOptions, List[curve.FitOptions]]:
         """Create algorithmic initial fit guess from analysis options and curve data.
 
@@ -113,8 +113,8 @@ class RamseyXYAnalysis(curve.CurveAnalysis):
         Returns:
             List of fit options that are passed to the fitter function.
         """
-        ramx_data = curve_data.get_subset_of("X")
-        ramy_data = curve_data.get_subset_of("Y")
+        ramx_data = curve_data.filter(series="X")
+        ramy_data = curve_data.filter(series="Y")
 
         # At very low frequency, y value of X (Y) curve stay at P=1.0 (0.5) for all x values.
         # Computing y peak-to-peak with combined data gives fake amplitude of 0.25.
@@ -192,13 +192,13 @@ class RamseyXYAnalysis(curve.CurveAnalysis):
         """Algorithmic criteria for whether the fit is good or bad.
 
         A good fit has:
-            - a reduced chi-squared lower than three,
+            - a reduced chi-squared lower than three and greater than zero,
             - an error on the frequency smaller than the frequency.
         """
         fit_freq = fit_data.ufloat_params["freq"]
 
         criteria = [
-            fit_data.reduced_chisq < 3,
+            0 < fit_data.reduced_chisq < 3,
             curve.utils.is_error_not_significant(fit_freq),
         ]
 

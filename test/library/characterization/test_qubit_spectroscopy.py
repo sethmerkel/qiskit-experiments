@@ -16,6 +16,7 @@ import numpy as np
 
 from qiskit.qobj.utils import MeasLevel
 from qiskit.circuit.library import XGate
+from qiskit_ibm_runtime.fake_provider import FakeWashingtonV2
 from qiskit_experiments.framework import ParallelExperiment
 
 from qiskit_experiments.framework import BackendData
@@ -51,8 +52,8 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         spec.set_run_options(meas_level=MeasLevel.CLASSIFIED)
         expdata = spec.run(backend)
         self.assertExperimentDone(expdata)
-        result = expdata.analysis_results(1)
-        self.assertRoundTripSerializable(result.value, check_func=self.ufloat_equiv)
+        result = expdata.analysis_results("f01")
+        self.assertRoundTripSerializable(result.value)
 
         self.assertAlmostEqual(result.value.n, freq01, delta=1e6)
         self.assertEqual(result.quality, "good")
@@ -64,8 +65,8 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         spec.set_run_options(meas_level=MeasLevel.CLASSIFIED)
         expdata = spec.run(backend)
         self.assertExperimentDone(expdata)
-        result = expdata.analysis_results(1)
-        self.assertRoundTripSerializable(result.value, check_func=self.ufloat_equiv)
+        result = expdata.analysis_results("f01")
+        self.assertRoundTripSerializable(result.value)
 
         self.assertAlmostEqual(result.value.n, freq01 + 5e6, delta=1e6)
         self.assertEqual(result.quality, "good")
@@ -90,8 +91,8 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         spec = QubitSpectroscopy([qubit], frequencies)
         expdata = spec.run(backend)
         self.assertExperimentDone(expdata)
-        result = expdata.analysis_results(1)
-        self.assertRoundTripSerializable(result.value, check_func=self.ufloat_equiv)
+        result = expdata.analysis_results("f01")
+        self.assertRoundTripSerializable(result.value)
 
         self.assertTrue(freq01 - 2e6 < result.value.n < freq01 + 2e6)
         self.assertEqual(result.quality, "good")
@@ -102,8 +103,8 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         spec = QubitSpectroscopy([qubit], frequencies)
         expdata = spec.run(backend)
         self.assertExperimentDone(expdata)
-        result = expdata.analysis_results(1)
-        self.assertRoundTripSerializable(result.value, check_func=self.ufloat_equiv)
+        result = expdata.analysis_results("f01")
+        self.assertRoundTripSerializable(result.value)
 
         self.assertTrue(freq01 + 3e6 < result.value.n < freq01 + 8e6)
         self.assertEqual(result.quality, "good")
@@ -111,8 +112,8 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         spec.set_run_options(meas_return="avg")
         expdata = spec.run(backend)
         self.assertExperimentDone(expdata)
-        result = expdata.analysis_results(1)
-        self.assertRoundTripSerializable(result.value, check_func=self.ufloat_equiv)
+        result = expdata.analysis_results("f01")
+        self.assertRoundTripSerializable(result.value)
 
         self.assertTrue(freq01 + 3e6 < result.value.n < freq01 + 8e6)
         self.assertEqual(result.quality, "good")
@@ -139,8 +140,8 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         spec.set_run_options(meas_level=MeasLevel.CLASSIFIED)
         expdata = spec.run(backend)
         self.assertExperimentDone(expdata)
-        result = expdata.analysis_results(1)
-        self.assertRoundTripSerializable(result.value, check_func=self.ufloat_equiv)
+        result = expdata.analysis_results("f12")
+        self.assertRoundTripSerializable(result.value)
 
         self.assertTrue(freq01 - 2e6 < result.value.n < freq01 + 2e6)
         self.assertEqual(result.quality, "good")
@@ -155,13 +156,13 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         exp = QubitSpectroscopy([1], np.linspace(100, 150, 20) * 1e6)
         loaded_exp = QubitSpectroscopy.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)
 
     def test_roundtrip_serializable(self):
         """Test round trip JSON serialization"""
-        exp = QubitSpectroscopy([1], np.linspace(int(100e6), int(150e6), int(20e6)))
+        exp = QubitSpectroscopy([1], np.linspace(int(100e6), int(150e6), 4))
         # Checking serialization of the experiment
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        self.assertRoundTripSerializable(exp)
 
     def test_expdata_serialization(self):
         """Test experiment data and analysis data JSON serialization"""
@@ -181,14 +182,14 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         exp = QubitSpectroscopy([qubit], frequencies)
 
         exp.set_run_options(meas_level=MeasLevel.CLASSIFIED, shots=1024)
-        expdata = exp.run(backend).block_for_results()
+        expdata = exp.run(backend)
         self.assertExperimentDone(expdata)
 
-        # Checking serialization of the experiment data
-        self.assertRoundTripSerializable(expdata, self.experiment_data_equiv)
+        # Checking serialization of the experiment data obj
+        self.assertRoundTripSerializable(expdata)
 
         # Checking serialization of the analysis
-        self.assertRoundTripSerializable(expdata.analysis_results(1), self.analysis_result_equiv)
+        self.assertRoundTripSerializable(expdata.analysis_results("f01"))
 
     def test_kerneled_expdata_serialization(self):
         """Test experiment data and analysis data JSON serialization"""
@@ -208,14 +209,14 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         exp = QubitSpectroscopy([qubit], frequencies)
 
         exp.set_run_options(meas_level=MeasLevel.KERNELED, shots=1024)
-        expdata = exp.run(backend).block_for_results()
+        expdata = exp.run(backend)
         self.assertExperimentDone(expdata)
 
         # Checking serialization of the experiment data
-        self.assertRoundTripSerializable(expdata, self.experiment_data_equiv)
+        self.assertRoundTripSerializable(expdata)
 
         # Checking serialization of the analysis
-        self.assertRoundTripSerializable(expdata.analysis_results(1), self.analysis_result_equiv)
+        self.assertRoundTripSerializable(expdata.analysis_results("f01"))
 
     def test_parallel_experiment(self):
         """Test for parallel experiment"""
@@ -266,16 +267,30 @@ class TestQubitSpectroscopy(QiskitExperimentsTestCase):
         parallel_backend.experiment_helper = parallel_helper
 
         # initializing parallel experiment
-        par_experiment = ParallelExperiment(exp_list, backend=parallel_backend)
-        par_experiment.set_run_options(meas_level=MeasLevel.KERNELED, meas_return="single")
+        par_experiment = ParallelExperiment(
+            exp_list, flatten_results=False, backend=parallel_backend
+        )
+        par_experiment.set_run_options(
+            meas_level=MeasLevel.KERNELED, meas_return="single", shots=20
+        )
 
-        par_data = par_experiment.run().block_for_results()
+        par_data = par_experiment.run()
         self.assertExperimentDone(par_data)
 
         # since under _experiment in kwargs there is an argument of the backend which isn't serializable.
         par_data._experiment = None
         # Checking serialization of the experiment data
-        self.assertRoundTripSerializable(par_data, self.experiment_data_equiv)
+        self.assertRoundTripSerializable(par_data)
 
         for child_data in par_data.child_data():
-            self.assertRoundTripSerializable(child_data, self.experiment_data_equiv)
+            self.assertRoundTripSerializable(child_data)
+
+    def test_circuit_roundtrip_serializable(self):
+        """Test circuits round trip JSON serialization"""
+        backend = FakeWashingtonV2()
+        qubit = 1
+        freq01 = BackendData(backend).drive_freqs[qubit]
+        frequencies = np.linspace(freq01 - 10.0e6, freq01 + 10.0e6, 3)
+        exp = QubitSpectroscopy([1], frequencies, backend=backend)
+        # Checking serialization of the experiment
+        self.assertRoundTripSerializable(exp._transpiled_circuits())

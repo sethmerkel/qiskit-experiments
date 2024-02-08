@@ -120,7 +120,7 @@ class InterleavedRBAnalysis(curve.CurveAnalysis):
     def _generate_fit_guesses(
         self,
         user_opt: curve.FitOptions,
-        curve_data: curve.CurveData,
+        curve_data: curve.ScatterTable,
     ) -> Union[curve.FitOptions, List[curve.FitOptions]]:
         """Create algorithmic initial fit guess from analysis options and curve data.
 
@@ -141,12 +141,12 @@ class InterleavedRBAnalysis(curve.CurveAnalysis):
         b_guess = 1 / 2**self._num_qubits
 
         # for standard RB curve
-        std_curve = curve_data.get_subset_of("standard")
+        std_curve = curve_data.filter(series="standard")
         alpha_std = curve.guess.rb_decay(std_curve.x, std_curve.y, b=b_guess)
         a_std = (std_curve.y[0] - b_guess) / (alpha_std ** std_curve.x[0])
 
         # for interleaved RB curve
-        int_curve = curve_data.get_subset_of("interleaved")
+        int_curve = curve_data.filter(series="interleaved")
         alpha_int = curve.guess.rb_decay(int_curve.x, int_curve.y, b=b_guess)
         a_int = (int_curve.y[0] - b_guess) / (alpha_int ** int_curve.x[0])
 

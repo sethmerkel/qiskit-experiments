@@ -21,7 +21,12 @@ import numpy as np
 from qiskit.providers.options import Options
 
 import qiskit_experiments.curve_analysis as curve
-from qiskit_experiments.curve_analysis import CurveAnalysis, CurveData, CurveFitResult, FitOptions
+from qiskit_experiments.curve_analysis import (
+    CurveAnalysis,
+    ScatterTable,
+    CurveFitResult,
+    FitOptions,
+)
 from qiskit_experiments.curve_analysis.utils import is_error_not_significant
 
 
@@ -121,7 +126,7 @@ class ZZRamseyAnalysis(CurveAnalysis):
     def _generate_fit_guesses(
         self,
         user_opt: FitOptions,
-        curve_data: CurveData,
+        curve_data: ScatterTable,
     ) -> Union[FitOptions, List[FitOptions]]:
         """Compute the initial guesses.
 
@@ -137,8 +142,8 @@ class ZZRamseyAnalysis(CurveAnalysis):
         y_ptp = y_max - y_min
         x_max = np.max(curve_data.x)
 
-        data_0 = curve_data.get_subset_of("0")
-        data_1 = curve_data.get_subset_of("1")
+        data_0 = curve_data.filter(series="0")
+        data_1 = curve_data.filter(series="1")
 
         def typical_step(arr):
             """Find the typical step size of an array"""

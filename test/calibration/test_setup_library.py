@@ -16,15 +16,16 @@ from typing import Dict, Set
 import json
 
 from test.base import QiskitExperimentsTestCase
-
 from qiskit import pulse
+from numpy import pi
+
 from qiskit_experiments.calibration_management.basis_gate_library import FixedFrequencyTransmon
 from qiskit_experiments.calibration_management.calibration_key_types import DefaultCalValue
 from qiskit_experiments.exceptions import CalibrationError
 from qiskit_experiments.framework.json import ExperimentEncoder, ExperimentDecoder
 
 
-class TestLibrary(FixedFrequencyTransmon):
+class MutableTestLibrary(FixedFrequencyTransmon):
     """A subclass designed for test_hash_warn.
 
     This class ensures that FixedFrequencyTransmon is preserved if anything goes wrong
@@ -54,7 +55,7 @@ class TestFixedFrequencyTransmon(QiskitExperimentsTestCase):
         for gate in ["x", "sx"]:
             sched = library[gate]
             self.assertTrue(isinstance(sched, pulse.ScheduleBlock))
-            self.assertEqual(len(sched.parameters), 5)
+            self.assertEqual(len(sched.parameters), 6)
 
         sched_x = library["x"]
         sched_y = library["y"]
@@ -64,18 +65,20 @@ class TestFixedFrequencyTransmon(QiskitExperimentsTestCase):
         self.assertEqual(sched_x.blocks[0].pulse.duration, sched_sx.blocks[0].pulse.duration)
         self.assertEqual(sched_x.blocks[0].pulse.sigma, sched_sx.blocks[0].pulse.sigma)
 
-        self.assertEqual(len(set(sched_x.parameters) & set(sched_y.parameters)), 4)
-        self.assertEqual(len(set(sched_sx.parameters) & set(sched_sy.parameters)), 4)
+        self.assertEqual(len(set(sched_x.parameters) & set(sched_y.parameters)), 5)
+        self.assertEqual(len(set(sched_sx.parameters) & set(sched_sy.parameters)), 5)
 
         expected = [
             DefaultCalValue(0.5, "amp", (), "x"),
             DefaultCalValue(0.0, "β", (), "x"),
             DefaultCalValue(320, "duration", (), "x"),
             DefaultCalValue(80, "σ", (), "x"),
+            DefaultCalValue(0.0, "angle", (), "x"),
             DefaultCalValue(320, "duration", (), "sx"),
             DefaultCalValue(0.0, "β", (), "sx"),
             DefaultCalValue(0.25, "amp", (), "sx"),
             DefaultCalValue(80, "σ", (), "sx"),
+            DefaultCalValue(0.0, "angle", (), "sx"),
         ]
 
         for param_conf in library.default_values():
@@ -89,7 +92,7 @@ class TestFixedFrequencyTransmon(QiskitExperimentsTestCase):
         self.assertListEqual(library.basis_gates, ["x", "y", "sx", "sy"])
 
     def test_unlinked_parameters(self):
-        """Test the we get schedules with unlinked parameters."""
+        """Test that we get schedules with unlinked parameters."""
 
         library = FixedFrequencyTransmon(link_parameters=False)
 
@@ -107,18 +110,22 @@ class TestFixedFrequencyTransmon(QiskitExperimentsTestCase):
             DefaultCalValue(0.0, "β", (), "x"),
             DefaultCalValue(160, "duration", (), "x"),
             DefaultCalValue(40, "σ", (), "x"),
+            DefaultCalValue(0.0, "angle", (), "x"),
             DefaultCalValue(160, "duration", (), "sx"),
             DefaultCalValue(0.0, "β", (), "sx"),
             DefaultCalValue(0.25, "amp", (), "sx"),
             DefaultCalValue(40, "σ", (), "sx"),
-            DefaultCalValue(0.5j, "amp", (), "y"),
+            DefaultCalValue(0.0, "angle", (), "sx"),
+            DefaultCalValue(0.5, "amp", (), "y"),
             DefaultCalValue(0.0, "β", (), "y"),
             DefaultCalValue(160, "duration", (), "y"),
             DefaultCalValue(40, "σ", (), "y"),
+            DefaultCalValue(pi / 2, "angle", (), "y"),
             DefaultCalValue(160, "duration", (), "sy"),
             DefaultCalValue(0.0, "β", (), "sy"),
-            DefaultCalValue(0.25j, "amp", (), "sy"),
+            DefaultCalValue(0.25, "amp", (), "sy"),
             DefaultCalValue(40, "σ", (), "sy"),
+            DefaultCalValue(pi / 2, "angle", (), "sy"),
         ]
 
         self.assertSetEqual(set(library.default_values()), set(expected))
@@ -190,26 +197,27 @@ class TestFixedFrequencyTransmon(QiskitExperimentsTestCase):
         4. A warning is raised since the class definition has changed.
         """
 
-        lib1 = TestLibrary()
+        lib1 = MutableTestLibrary()
         lib_data = json.dumps(lib1, cls=ExperimentEncoder)
         lib2 = json.loads(lib_data, cls=ExperimentDecoder)
 
         self.assertTrue(self._test_library_equivalence(lib1, lib2))
 
         # stash method build schedules to avoid other tests from failing
-        build_schedules = TestLibrary._build_schedules
+        build_schedules = MutableTestLibrary._build_schedules
 
         def _my_build_schedules():
             """A dummy function to change the class behaviour."""
             pass
 
         # Change the schedule behaviour
-        TestLibrary._build_schedules = _my_build_schedules
+        MutableTestLibrary._build_schedules = _my_build_schedules
 
         with self.assertWarns(UserWarning):
-            json.loads(lib_data, cls=ExperimentDecoder)
-
-        TestLibrary._build_schedules = build_schedules
+            try:
+                json.loads(lib_data, cls=ExperimentDecoder)
+            finally:
+                MutableTestLibrary._build_schedules = build_schedules
 
     def _test_library_equivalence(self, lib1, lib2) -> bool:
         """Test if libraries are equivalent.

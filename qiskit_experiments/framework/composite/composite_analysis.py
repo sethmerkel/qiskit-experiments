@@ -14,6 +14,7 @@ Composite Experiment Analysis class.
 """
 
 from typing import List, Dict, Union, Optional, Tuple
+import warnings
 import numpy as np
 from qiskit.result import marginal_distribution
 from qiskit.result.postprocess import format_counts_memory
@@ -34,7 +35,7 @@ class CompositeAnalysis(BaseAnalysis):
     Analysis of this composite circuit data involves constructing
     a list of experiment data containers for each component experiment containing
     the marginalized circuit result data for that experiment. These are saved as
-    :meth:.~ExperimentData.child_data` in the main :class:`.ExperimentData` container.
+    :meth:`~.ExperimentData.child_data` in the main :class:`.ExperimentData` container.
     Each component experiment data is then analyzed using the analysis class from
     the corresponding component experiment.
 
@@ -51,7 +52,12 @@ class CompositeAnalysis(BaseAnalysis):
         experiment data.
     """
 
-    def __init__(self, analyses: List[BaseAnalysis], flatten_results: bool = False):
+    def __init__(
+        self,
+        analyses: List[BaseAnalysis],
+        flatten_results: bool = None,
+        generate_figures: Optional[str] = "always",
+    ):
         """Initialize a composite analysis class.
 
         Args:
@@ -61,12 +67,27 @@ class CompositeAnalysis(BaseAnalysis):
                              nested composite experiments. If False save each
                              component experiment results as a separate child
                              ExperimentData container.
+            generate_figures: Optional flag to set the figure generation behavior.
+                If ``always``, figures are always generated. If ``never``, figures are never generated.
+                If ``selective``, figures are generated if the analysis ``quality`` is ``bad``.
         """
+        if flatten_results is None:
+            # Backward compatibility for 0.6
+            # This if-clause will be removed in 0.7 and flatten_result=True is set in arguments.
+            warnings.warn(
+                "Default value of flatten_results will be turned to True in Qiskit Experiments 0.7. "
+                "If you want child experiment data for each subset experiment, "
+                "set 'flatten_results=False' explicitly.",
+                DeprecationWarning,
+            )
+            flatten_results = False
         super().__init__()
         self._analyses = analyses
         self._flatten_results = False
         if flatten_results:
             self._set_flatten_results()
+
+        self._set_generate_figures(generate_figures)
 
     def component_analysis(
         self, index: Optional[int] = None
@@ -85,6 +106,14 @@ class CompositeAnalysis(BaseAnalysis):
             return self._analyses
         return self._analyses[index]
 
+    def set_options(self, **fields):
+        """Set the analysis options for the experiment. If the `broadcast` argument set to `True`, the
+        analysis options will cascade to the child experiments."""
+        super().set_options(**fields)
+        if fields.get("broadcast", None):
+            for sub_analysis in self._analyses:
+                sub_analysis.set_options(**fields)
+
     def copy(self):
         ret = super().copy()
         # Recursively copy analysis
@@ -102,7 +131,7 @@ class CompositeAnalysis(BaseAnalysis):
             experiment_data = experiment_data.copy()
 
         if not self._flatten_results:
-            # Initialize child components if they are not initalized
+            # Initialize child components if they are not initialized
             # This only needs to be done if results are not being flattened
             self._add_child_data(experiment_data)
 
@@ -129,15 +158,18 @@ class CompositeAnalysis(BaseAnalysis):
         # Optionally flatten results from all component experiments
         # for adding to the main experiment data container
         if self._flatten_results:
-            return self._combine_results(component_expdata)
-
+            analysis_results, figures = self._combine_results(component_expdata)
+            for res in analysis_results:
+                # Override experiment  ID because entries are flattened
+                res.experiment_id = experiment_data.experiment_id
+            return analysis_results, figures
         return [], []
 
     def _component_experiment_data(self, experiment_data: ExperimentData) -> List[ExperimentData]:
         """Return a list of marginalized experiment data for component experiments.
 
         Args:
-            experiment_data: a composite experiment experiment data container.
+            experiment_data: a composite experiment data container.
 
         Returns:
             The list of analysis-ready marginalized experiment data for each
@@ -203,16 +235,16 @@ class CompositeAnalysis(BaseAnalysis):
                 if index not in marginalized_data:
                     # Initialize data list for marginalized
                     marginalized_data[index] = []
-                sub_data = {"metadata": metadata["composite_metadata"][i]}
+                sub_data = {
+                    k: v for k, v in datum.items() if k not in ("metadata", "counts", "memory")
+                }
+                sub_data["metadata"] = metadata["composite_metadata"][i]
                 if "counts" in datum:
                     if composite_clbits is not None:
-                        # `marginal_distribution() doesn't support int64 values
-                        # so detect and cast to an int. This can be removed
-                        # when Qiskit/qiskit-terra#9976 is released
-                        counts = datum["counts"]
-                        if any(isinstance(x, np.integer) for x in counts.values()):
-                            counts = {k: int(v) for k, v in counts.items()}
-                        sub_data["counts"] = marginal_distribution(counts, composite_clbits[i])
+                        sub_data["counts"] = marginal_distribution(
+                            counts=datum["counts"],
+                            indices=composite_clbits[i],
+                        )
                     else:
                         sub_data["counts"] = datum["counts"]
                 if "memory" in datum:
@@ -331,8 +363,18 @@ class CompositeAnalysis(BaseAnalysis):
             if isinstance(analysis, CompositeAnalysis):
                 analysis._set_flatten_results()
 
+    def _set_generate_figures(self, generate_figures):
+        """Recursively propagate ``generate_figures`` to all child experiments."""
+        self._generate_figures = generate_figures
+        for analysis in self._analyses:
+            if isinstance(analysis, CompositeAnalysis):
+                analysis._set_generate_figures(generate_figures)
+            else:
+                analysis._generate_figures = generate_figures
+
     def _combine_results(
-        self, component_experiment_data: List[ExperimentData]
+        self,
+        component_experiment_data: List[ExperimentData],
     ) -> Tuple[List[AnalysisResultData], List["matplotlib.figure.Figure"]]:
         """Combine analysis results from component experiment data.
 
@@ -347,15 +389,24 @@ class CompositeAnalysis(BaseAnalysis):
         """
         analysis_results = []
         figures = []
-        for i, sub_expdata in enumerate(component_experiment_data):
+        for sub_expdata in component_experiment_data:
             figures += sub_expdata._figures.values()
-            for result in sub_expdata.analysis_results():
-                # Add metadata to distinguish the component experiment
-                # the result was generated from
-                result.extra["component_experiment"] = {
-                    "experiment_type": sub_expdata.experiment_type,
-                    "component_index": i,
-                }
-                analysis_results.append(result)
+
+            # Convert Dataframe Series back into AnalysisResultData
+            # This is due to limitation that _run_analysis must return List[AnalysisResultData],
+            # and some composite analysis such as TphiAnalysis overrides this method to
+            # return extra quantity computed from sub analysis results.
+            # This produces unnecessary data conversion.
+            # The _run_analysis mechanism seems just complicating the entire logic.
+            # Since it's impossible to deprecate the usage of this protected method,
+            # we should implement new CompositeAnalysis class with much more efficient
+            # internal logic. Note that the child data structure is no longer necessary
+            # because dataframe offers more efficient data filtering mechanisms.
+            analysis_table = sub_expdata.analysis_results(columns="all", dataframe=True)
+            for _, series in analysis_table.iterrows():
+                data = AnalysisResultData.from_table_element(**series.to_dict())
+                analysis_results.append(data)
+            for artifact in sub_expdata.artifacts():
+                analysis_results.append(artifact)
 
         return analysis_results, figures

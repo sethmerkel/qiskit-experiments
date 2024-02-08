@@ -20,7 +20,6 @@ from qiskit.qobj.utils import MeasLevel
 from qiskit.providers.backend import Backend
 
 from qiskit_experiments.framework import BaseExperiment, Options
-from qiskit_experiments.warnings import qubit_deprecate
 from qiskit_experiments.library.characterization.analysis.readout_angle_analysis import (
     ReadoutAngleAnalysis,
 )
@@ -47,8 +46,6 @@ class ReadoutAngle(BaseExperiment):
            the cluster centers of the ground and excited states.
         3. Analysis of results: return the average of the angles of the two centers.
 
-        |
-
     # section: analysis_ref
         :class:`ReadoutAngleAnalysis`
     """
@@ -63,7 +60,6 @@ class ReadoutAngle(BaseExperiment):
 
         return options
 
-    @qubit_deprecate()
     def __init__(
         self,
         physical_qubits: Sequence[int],
@@ -89,16 +85,11 @@ class ReadoutAngle(BaseExperiment):
         """
         circ0 = QuantumCircuit(1, 1)
         circ0.measure(0, 0)
+        circ0.metadata = {"xval": 0}
 
         circ1 = QuantumCircuit(1, 1)
         circ1.x(0)
         circ1.measure(0, 0)
-
-        for i, circ in enumerate([circ0, circ1]):
-            circ.metadata = {
-                "experiment_type": self._type,
-                "qubit": self.physical_qubits[0],
-                "xval": i,
-            }
+        circ1.metadata = {"xval": 1}
 
         return [circ0, circ1]

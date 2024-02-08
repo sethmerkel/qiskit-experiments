@@ -21,7 +21,6 @@ from qiskit import QuantumCircuit
 from qiskit.providers.backend import Backend
 from qiskit.circuit import Parameter, ParameterExpression
 
-from qiskit_experiments.warnings import deprecate_arguments
 from qiskit_experiments.framework import BackendTiming, BaseExperiment, Options
 from .analysis.zz_ramsey_analysis import ZZRamseyAnalysis
 
@@ -127,7 +126,6 @@ class ZZRamsey(BaseExperiment):
         :class:`ZZRamseyAnalysis`
     """
 
-    @deprecate_arguments({"qubits": "physical_qubits"}, "0.5")
     def __init__(
         self,
         physical_qubits: Tuple[int, int],
@@ -223,10 +221,6 @@ class ZZRamsey(BaseExperiment):
         Returns:
             Circuits for series 0 and 1
         """
-        metadata = {
-            "unit": "s",
-        }
-
         delay = Parameter("delay")
 
         timing = BackendTiming(self.backend)
@@ -246,7 +240,7 @@ class ZZRamsey(BaseExperiment):
 
         # Template circuit for series 0
         # Control qubit starting in |0> state, flipping to |1> in middle
-        circ0 = QuantumCircuit(2, 1, metadata=metadata.copy())
+        circ0 = QuantumCircuit(2, 1)
         circ0.metadata["series"] = "0"
 
         circ0.sx(0)
@@ -273,7 +267,7 @@ class ZZRamsey(BaseExperiment):
 
         # Template circuit for series 1
         # Control qubit starting in |1> state, flipping to |0> in middle
-        circ1 = QuantumCircuit(2, 1, metadata=metadata.copy())
+        circ1 = QuantumCircuit(2, 1)
         circ1.metadata["series"] = "1"
 
         circ1.x(1)

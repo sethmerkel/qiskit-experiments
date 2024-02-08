@@ -20,7 +20,6 @@ from qiskit.providers.backend import Backend
 
 from qiskit_experiments.framework import BaseExperiment, Options
 from qiskit_experiments.curve_analysis.standard_analysis import ErrorAmplificationAnalysis
-from qiskit_experiments.warnings import qubit_deprecate
 
 
 class FineFrequency(BaseExperiment):
@@ -51,7 +50,6 @@ class FineFrequency(BaseExperiment):
         :class:`~qiskit_experiments.curve_analysis.ErrorAmplificationAnalysis`
     """
 
-    @qubit_deprecate()
     def __init__(
         self,
         physical_qubits: Sequence[int],
@@ -129,12 +127,7 @@ class FineFrequency(BaseExperiment):
             circuit.sx(0)
             circuit.measure_all()
 
-            circuit.metadata = {
-                "experiment_type": self._type,
-                "qubits": self.physical_qubits,
-                "xval": repetition,
-                "unit": "Number of delays",
-            }
+            circuit.metadata = {"xval": repetition}
 
             circuits.append(circuit)
 

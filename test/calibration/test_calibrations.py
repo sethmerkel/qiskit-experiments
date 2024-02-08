@@ -36,8 +36,8 @@ from qiskit import QuantumCircuit, pulse, transpile
 from qiskit.circuit.library import CXGate, XGate
 from qiskit.pulse.transforms import inline_subroutines, block_to_schedule
 from qiskit.providers import BackendV2, Options
-from qiskit.providers.fake_provider import FakeArmonkV2, FakeBelemV2
 from qiskit.transpiler import Target
+from qiskit_ibm_runtime.fake_provider import FakeArmonkV2, FakeBelemV2
 
 from qiskit_experiments.framework import BackendData
 from qiskit_experiments.calibration_management.calibrations import Calibrations, ParameterKey
@@ -120,6 +120,18 @@ class TestCalibrationsBasic(QiskitExperimentsTestCase):
         self.cals.add_parameter_value(ParameterValue(0.1, self.date_time), "amp", (3,), "x90p")
         self.cals.add_parameter_value(ParameterValue(0.08, self.date_time), "amp", (3,), "y90p")
         self.cals.add_parameter_value(ParameterValue(40, self.date_time), "β", (3,), "xp")
+
+    def test_calibration_save_json(self):
+        """Test that the calibration under test can be serialized through JSON."""
+        filename = self.__class__.__name__
+
+        try:
+            self.cals.save(file_type="json", file_prefix=filename)
+            loaded = self.cals.load(file_path=f"{filename}.json")
+            self.assertEqual(self.cals, loaded)
+        finally:
+            if os.path.exists(f"{filename}.json"):
+                os.remove(f"{filename}.json")
 
     def test_setup(self):
         """Test that the initial setup behaves as expected."""
@@ -205,12 +217,12 @@ class TestCalibrationsBasic(QiskitExperimentsTestCase):
         self.cals.add_schedule(sched, num_qubits=1)
 
         self.assertEqual(len(self.cals.schedules()), 4)
-        self.assertEqual(len(self.cals.parameters), 9)
+        self.assertEqual(len(self.cals.parameters), 7)
 
         self.cals.remove_schedule(sched)
 
         self.assertEqual(len(self.cals.schedules()), 3)
-        self.assertEqual(len(self.cals.parameters), 8)
+        self.assertEqual(len(self.cals.parameters), 6)
         for param in [self.sigma, self.amp_xp, self.amp_x90p, self.amp_y90p, self.beta]:
             self.assertTrue(param in self.cals.parameters)
 
@@ -311,8 +323,9 @@ class TestCalibrationsBasic(QiskitExperimentsTestCase):
         """Test that when generating calibrations from backend
         the data is passed correctly"""
         backend = FakeBelemV2()
-        cals = Calibrations.from_backend(backend)
-        config_args = cals.config()["kwargs"]
+        cals = Calibrations.from_backend(backend, libraries=[FixedFrequencyTransmon()])
+        with self.assertWarns(DeprecationWarning):
+            config_args = cals.config()["kwargs"]
         control_channel_map_size = len(config_args["control_channel_map"].chan_map)
         coupling_map_size = len(config_args["coupling_map"])
         self.assertEqual(control_channel_map_size, 8)
@@ -350,6 +363,65 @@ class TestCalibrationsBasic(QiskitExperimentsTestCase):
             backend.target.add_instruction(gate, properties=properties)
         Calibrations.from_backend(backend)
 
+    def test_equality(self):
+        """Test the equal method on calibrations."""
+        backend = FakeBelemV2()
+        library = FixedFrequencyTransmon(basis_gates=["sx", "x"])
+
+        cals1 = Calibrations.from_backend(
+            backend, libraries=[library], add_parameter_defaults=False
+        )
+        cals2 = Calibrations.from_backend(
+            backend, libraries=[library], add_parameter_defaults=False
+        )
+        self.assertTrue(cals1 == cals2)
+
+        date_time = datetime.now(timezone.utc).astimezone()
+        param_val = ParameterValue(0.12345, date_time=date_time)
+        cals1.add_parameter_value(param_val, "amp", 3, "x")
+
+        # The two objects are different due to missing parameter value
+        self.assertFalse(cals1 == cals2)
+
+        # The two objects are different due to time stamps
+        param_val2 = ParameterValue(0.12345, date_time=date_time - timedelta(seconds=1))
+        cals2.add_parameter_value(param_val2, "amp", 3, "x")
+        self.assertFalse(cals1 == cals2)
+
+        # The two objects are different due to missing parameter value
+        cals3 = Calibrations.from_backend(
+            backend, libraries=[library], add_parameter_defaults=False
+        )
+        self.assertFalse(cals1 == cals3)
+
+        # The two objects are identical due to time stamps
+        cals2.add_parameter_value(param_val, "amp", 3, "x")
+        self.assertFalse(cals1 == cals3)
+
+        # The schedules contained in the cals are different.
+        library2 = FixedFrequencyTransmon(basis_gates=["sx", "x", "y"])
+        cals1 = Calibrations.from_backend(backend, libraries=[library])
+        cals2 = Calibrations.from_backend(backend, libraries=[library2])
+        self.assertFalse(cals1 == cals2)
+
+        # Ensure that the equality is not sensitive to parameter adding order.
+        cals1 = Calibrations.from_backend(
+            backend, libraries=[library], add_parameter_defaults=False
+        )
+        cals2 = Calibrations.from_backend(
+            backend, libraries=[library], add_parameter_defaults=False
+        )
+        param_val1 = ParameterValue(0.54321, date_time=date_time)
+        param_val2 = ParameterValue(0.12345, date_time=date_time - timedelta(seconds=1))
+
+        cals1.add_parameter_value(param_val2, "amp", 3, "x")
+        cals1.add_parameter_value(param_val1, "amp", 3, "x")
+
+        cals2.add_parameter_value(param_val1, "amp", 3, "x")
+        cals2.add_parameter_value(param_val2, "amp", 3, "x")
+
+        self.assertTrue(cals1 == cals2)
+
 
 class TestOverrideDefaults(QiskitExperimentsTestCase):
     """
@@ -383,6 +455,18 @@ class TestOverrideDefaults(QiskitExperimentsTestCase):
         # Add the schedules
         self.cals.add_schedule(xp, num_qubits=1)
         self.cals.add_schedule(xp_drag, (3,))
+
+    def test_calibration_save_json(self):
+        """Test that the calibration under test can be serialized through JSON."""
+        filename = self.__class__.__name__
+
+        try:
+            self.cals.save(file_type="json", file_prefix=filename)
+            loaded = self.cals.load(file_path=f"{filename}.json")
+            self.assertEqual(self.cals, loaded)
+        finally:
+            if os.path.exists(f"{filename}.json"):
+                os.remove(f"{filename}.json")
 
     def test_parameter_value_adding_and_filtering(self):
         """Test that adding parameter values behaves in the expected way."""
@@ -420,6 +504,13 @@ class TestOverrideDefaults(QiskitExperimentsTestCase):
         self.assertEqual(params[0]["value"], 0.25)
         self.assertEqual(params[0]["qubits"], (3,))
 
+    def test_complex_parameter_value_deprecation_warning(self):
+        """Test that complex parameter values raise PendingDeprecationWarning"""
+        with self.assertWarns(PendingDeprecationWarning):
+            ParameterValue(40j, self.date_time)
+        with self.assertWarns(PendingDeprecationWarning):
+            self.cals.add_parameter_value(40j, "amp", schedule="xp")
+
     def _add_parameters(self):
         """Helper function."""
 
@@ -443,14 +534,14 @@ class TestOverrideDefaults(QiskitExperimentsTestCase):
         xp3 = self.cals.get_schedule("xp", (3,))
 
         # Check that xp0 is Play(Gaussian(160, 0.15, 40), 0)
-        self.assertTrue(isinstance(xp0.instructions[0][1].pulse, Gaussian))
+        self.assertTrue(xp0.instructions[0][1].pulse.pulse_type == "Gaussian")
         self.assertEqual(xp0.instructions[0][1].channel, DriveChannel(0))
         self.assertEqual(xp0.instructions[0][1].pulse.amp, 0.15)
         self.assertEqual(xp0.instructions[0][1].pulse.sigma, 40)
         self.assertEqual(xp0.instructions[0][1].pulse.duration, 160)
 
         # Check that xp3 is Play(Drag(160, 0.25, 40, 10), 3)
-        self.assertTrue(isinstance(xp3.instructions[0][1].pulse, Drag))
+        self.assertTrue(xp3.instructions[0][1].pulse.pulse_type == "Drag")
         self.assertEqual(xp3.instructions[0][1].channel, DriveChannel(3))
         self.assertEqual(xp3.instructions[0][1].pulse.amp, 0.25)
         self.assertEqual(xp3.instructions[0][1].pulse.sigma, 40)
@@ -474,8 +565,6 @@ class TestOverrideDefaults(QiskitExperimentsTestCase):
             self.sigma,
             self.beta,
             self.duration,
-            self.cals.drive_freq,
-            self.cals.meas_freq,
         }
         self.assertEqual(len(set(self.cals.parameters.keys())), len(expected))
 
@@ -501,8 +590,8 @@ class TestOverrideDefaults(QiskitExperimentsTestCase):
         # For completeness we check that schedule that comes out.
         sched_cal = self.cals.get_schedule("xp", (3,))
 
-        self.assertTrue(isinstance(sched_cal.instructions[0][1].pulse, Drag))
-        self.assertTrue(isinstance(sched_cal.instructions[1][1].pulse, Drag))
+        self.assertTrue(sched_cal.instructions[0][1].pulse.pulse_type == "Drag")
+        self.assertTrue(sched_cal.instructions[1][1].pulse.pulse_type == "Drag")
         self.assertEqual(sched_cal.instructions[0][1].pulse.amp, 0.125)
         self.assertEqual(sched_cal.instructions[1][1].pulse.amp, 0.125)
 
@@ -636,6 +725,18 @@ class TestMeasurements(QiskitExperimentsTestCase):
         self.cals.add_parameter_value(40, self.sigma_xp, schedule="xp")
         self.cals.add_parameter_value(160, self.duration_xp, schedule="xp")
 
+    def test_calibration_save_json(self):
+        """Test that the calibration under test can be serialized through JSON."""
+        filename = self.__class__.__name__
+
+        try:
+            self.cals.save(file_type="json", file_prefix=filename)
+            loaded = self.cals.load(file_path=f"{filename}.json")
+            self.assertEqual(self.cals, loaded)
+        finally:
+            if os.path.exists(f"{filename}.json"):
+                os.remove(f"{filename}.json")
+
     def test_meas_schedule(self):
         """Test that we get a properly assigned measure schedule without drive channels."""
         sched = self.cals.get_schedule("meas", (0,))
@@ -763,6 +864,18 @@ class TestInstructions(QiskitExperimentsTestCase):
 
         self.cals.add_parameter_value(ParameterValue(1.57, self.date_time), "φ", (3,), "xp12")
         self.cals.add_parameter_value(ParameterValue(200, self.date_time), "ν", (3,), "xp12")
+
+    def test_calibration_save_json(self):
+        """Test that the calibration under test can be serialized through JSON."""
+        filename = self.__class__.__name__
+
+        try:
+            self.cals.save(file_type="json", file_prefix=filename)
+            loaded = self.cals.load(file_path=f"{filename}.json")
+            self.assertEqual(self.cals, loaded)
+        finally:
+            if os.path.exists(f"{filename}.json"):
+                os.remove(f"{filename}.json")
 
     def test_call_registration(self):
         """Check that by registering the call we registered three schedules."""
@@ -914,6 +1027,18 @@ class TestControlChannels(CrossResonanceTest):
     support parameters with the same names.
     """
 
+    def test_calibration_save_json(self):
+        """Test that the calibration under test can be serialized through JSON."""
+        filename = self.__class__.__name__
+
+        try:
+            self.cals.save(file_type="json", file_prefix=filename)
+            loaded = self.cals.load(file_path=f"{filename}.json")
+            self.assertEqual(self.cals, loaded)
+        finally:
+            if os.path.exists(f"{filename}.json"):
+                os.remove(f"{filename}.json")
+
     def test_get_schedule(self):
         """Check that we can get a CR schedule with a built in Call."""
 
@@ -1044,6 +1169,18 @@ class TestAssignment(QiskitExperimentsTestCase):
         self.cals.add_parameter_value(0.2, "amp", (2,), "xp")
         self.cals.add_parameter_value(0.3, "amp", (3,), "xp")
         self.cals.add_parameter_value(40, "σ", (), "xp")
+
+    def test_calibration_save_json(self):
+        """Test that the calibration under test can be serialized through JSON."""
+        filename = self.__class__.__name__
+
+        try:
+            self.cals.save(file_type="json", file_prefix=filename)
+            loaded = self.cals.load(file_path=f"{filename}.json")
+            self.assertEqual(self.cals, loaded)
+        finally:
+            if os.path.exists(f"{filename}.json"):
+                os.remove(f"{filename}.json")
 
     def test_short_key(self):
         """Test simple value assignment"""
@@ -1190,6 +1327,18 @@ class TestReplaceScheduleAndCall(QiskitExperimentsTestCase):
         self.cals.add_parameter_value(160, "duration", (4,), "xp")
         self.cals.add_parameter_value(40, "σ", (), "xp")
 
+    def test_calibration_save_json(self):
+        """Test that the calibration under test can be serialized through JSON."""
+        filename = self.__class__.__name__
+
+        try:
+            self.cals.save(file_type="json", file_prefix=filename)
+            loaded = self.cals.load(file_path=f"{filename}.json")
+            self.assertEqual(self.cals, loaded)
+        finally:
+            if os.path.exists(f"{filename}.json"):
+                os.remove(f"{filename}.json")
+
     def test_reference_replaced(self):
         """Test that we get an error when there is an inconsistency in subroutines."""
 
@@ -1272,6 +1421,18 @@ class TestCoupledAssigning(QiskitExperimentsTestCase):
         self.cals.add_parameter_value(40, "σ", (), "xp")
         self.cals.add_parameter_value(640, "w", (3, 2), "cr_p")
         self.cals.add_parameter_value(800, "duration", (3, 2), "cr_p")
+
+    def test_calibration_save_json(self):
+        """Test that the calibration under test can be serialized through JSON."""
+        filename = self.__class__.__name__
+
+        try:
+            self.cals.save(file_type="json", file_prefix=filename)
+            loaded = self.cals.load(file_path=f"{filename}.json")
+            self.assertEqual(self.cals, loaded)
+        finally:
+            if os.path.exists(f"{filename}.json"):
+                os.remove(f"{filename}.json")
 
     def test_assign_coupled_explicitly(self):
         """Test that we get the proper schedules when they are coupled."""
@@ -1398,6 +1559,18 @@ class TestFiltering(QiskitExperimentsTestCase):
             ParameterValue(0.4, self.date_time2, group="super_cal"), "amp", (0,), "xp"
         )
 
+    def test_calibration_save_json(self):
+        """Test that the calibration under test can be serialized through JSON."""
+        filename = self.__class__.__name__
+
+        try:
+            self.cals.save(file_type="json", file_prefix=filename)
+            loaded = self.cals.load(file_path=f"{filename}.json")
+            self.assertEqual(self.cals, loaded)
+        finally:
+            if os.path.exists(f"{filename}.json"):
+                os.remove(f"{filename}.json")
+
     def test_parameter_table_most_recent(self):
         """Test the most_recent argument to the parameter_table method."""
 
@@ -1440,14 +1613,18 @@ class TestSavingAndLoading(CrossResonanceTest):
         """Clean-up after the test."""
         super().tearDown()
 
-        for file in ["parameter_values.csv", "parameter_config.csv", "schedules.csv"]:
+        for file in ["parameter_values.csv", "parameter_config.csv", "schedules.csv", ".json"]:
             if os.path.exists(self._prefix + file):
                 os.remove(self._prefix + file)
 
-    def test_save_load_parameter_values(self):
+    def test_save_load_parameter_values_csv(self):
         """Test that we can save and load parameter values."""
+        # NOTE: This is a legacy test that can be removed when csv support is
+        # removed from Calibrations.save
 
-        self.cals.save("csv", overwrite=True, file_prefix=self._prefix)
+        # Expect user warning about schedules, deprecation warning about csv
+        with self.assertWarns((UserWarning, DeprecationWarning)):
+            self.cals.save("csv", overwrite=True, file_prefix=self._prefix)
         self.assertEqual(self.cals.get_parameter_value("amp", (3,), "xp"), 0.1)
 
         self.cals._params = defaultdict(list)
@@ -1456,7 +1633,8 @@ class TestSavingAndLoading(CrossResonanceTest):
             self.cals.get_parameter_value("amp", (3,), "xp")
 
         # Load the parameters, check value and type.
-        self.cals.load_parameter_values(self._prefix + "parameter_values.csv")
+        with self.assertWarns(DeprecationWarning):
+            self.cals.load_parameter_values(self._prefix + "parameter_values.csv")
 
         val = self.cals.get_parameter_value("amp", (3,), "xp")
         self.assertEqual(val, 0.1)
@@ -1471,9 +1649,11 @@ class TestSavingAndLoading(CrossResonanceTest):
 
         # Check that we cannot rewrite files as they already exist.
         with self.assertRaises(CalibrationError):
-            self.cals.save("csv", file_prefix=self._prefix)
+            with self.assertWarns((UserWarning, DeprecationWarning)):
+                self.cals.save("csv", file_prefix=self._prefix)
 
-        self.cals.save("csv", overwrite=True, file_prefix=self._prefix)
+        with self.assertWarns((UserWarning, DeprecationWarning)):
+            self.cals.save("csv", overwrite=True, file_prefix=self._prefix)
 
     def test_alternate_date_formats(self):
         """Test that we can reload dates with or without time-zone."""
@@ -1482,9 +1662,34 @@ class TestSavingAndLoading(CrossResonanceTest):
         value = ParameterValue(0.222, date_time=new_date)
         self.cals.add_parameter_value(value, "amp", (3,), "xp")
 
-        self.cals.save("csv", overwrite=True, file_prefix=self._prefix)
-        self.cals._params = defaultdict(list)
-        self.cals.load_parameter_values(self._prefix + "parameter_values.csv")
+        self.cals.save("json", overwrite=True, file_prefix=self._prefix)
+        self.cals.load(self._prefix + ".json")
+
+    def test_save_load_library_csv(self):
+        """Test that we can load and save a library.
+
+        These libraries contain both parameters with schedules and parameters without
+        any schedules (e.g. frequencies for qubits and readout).
+        """
+
+        library = FixedFrequencyTransmon()
+        backend = FakeArmonkV2()
+        cals = Calibrations.from_backend(backend, libraries=[library])
+
+        cals.parameters_table()
+
+        with self.assertWarns((UserWarning, DeprecationWarning)):
+            cals.save(file_type="csv", overwrite=True, file_prefix=self._prefix)
+
+        with self.assertWarns(DeprecationWarning):
+            cals.load_parameter_values(self._prefix + "parameter_values.csv")
+
+        # Test the value of a few loaded params.
+        self.assertEqual(cals.get_parameter_value("amp", (0,), "x"), 0.5)
+        self.assertEqual(
+            cals.get_parameter_value("drive_freq", (0,)),
+            BackendData(backend).drive_freqs[0],
+        )
 
     def test_save_load_library(self):
         """Test that we can load and save a library.
@@ -1499,16 +1704,44 @@ class TestSavingAndLoading(CrossResonanceTest):
 
         cals.parameters_table()
 
-        cals.save(file_type="csv", overwrite=True, file_prefix=self._prefix)
+        cals.save(file_type="json", overwrite=True, file_prefix=self._prefix)
 
-        cals.load_parameter_values(self._prefix + "parameter_values.csv")
+        loaded = Calibrations.load(self._prefix + ".json")
 
         # Test the value of a few loaded params.
-        self.assertEqual(cals.get_parameter_value("amp", (0,), "x"), 0.5)
+        self.assertEqual(loaded.get_parameter_value("amp", (0,), "x"), 0.5)
         self.assertEqual(
-            cals.get_parameter_value("drive_freq", (0,)),
+            loaded.get_parameter_value("drive_freq", (0,)),
             BackendData(backend).drive_freqs[0],
         )
+
+    def test_json_round_trip(self):
+        """Test round trip test for JSON file format.
+
+        This method guarantees full equality including parameterized template schedules
+        and we can still generate schedules with loaded calibration instance,
+        even though calibrations is instantiated outside built-in library.
+        """
+        self.cals.save(file_type="json", overwrite=True, file_prefix=self._prefix)
+        loaded = self.cals.load(file_path=self._prefix + ".json")
+        self.assertEqual(self.cals, loaded)
+
+        original_sched = self.cals.get_schedule("cr", (3, 2))
+        roundtrip_sched = loaded.get_schedule("cr", (3, 2))
+        self.assertEqual(original_sched, roundtrip_sched)
+
+    def test_overwrite(self):
+        """Test that overwriting errors unless overwrite flag is used"""
+        self.cals.save(file_type="json", overwrite=True, file_prefix=self._prefix)
+        with self.assertRaises(CalibrationError):
+            self.cals.save(file_type="json", overwrite=False, file_prefix=self._prefix)
+
+        # Add a value to make sure data is really overwritten and not carried
+        # over from first write
+        self.cals.add_parameter_value(0.45, "amp", (3,), "xp")
+        self.cals.save(file_type="json", overwrite=True, file_prefix=self._prefix)
+        loaded = Calibrations.load(file_path=self._prefix + ".json")
+        self.assertEqual(self.cals, loaded)
 
 
 class TestInstructionScheduleMap(QiskitExperimentsTestCase):
@@ -1744,63 +1977,4 @@ class TestSerialization(QiskitExperimentsTestCase):
         cals = Calibrations.from_backend(backend, libraries=[library])
         cals.add_parameter_value(0.12345, "amp", 3, "x")
 
-        self.assertRoundTripSerializable(cals, self.json_equiv)
-
-    def test_equality(self):
-        """Test the equal method on calibrations."""
-        backend = FakeBelemV2()
-        library = FixedFrequencyTransmon(basis_gates=["sx", "x"])
-
-        cals1 = Calibrations.from_backend(
-            backend, libraries=[library], add_parameter_defaults=False
-        )
-        cals2 = Calibrations.from_backend(
-            backend, libraries=[library], add_parameter_defaults=False
-        )
-        self.assertTrue(cals1 == cals2)
-
-        date_time = datetime.now(timezone.utc).astimezone()
-        param_val = ParameterValue(0.12345, date_time=date_time)
-        cals1.add_parameter_value(param_val, "amp", 3, "x")
-
-        # The two objects are different due to missing parameter value
-        self.assertFalse(cals1 == cals2)
-
-        # The two objects are different due to time stamps
-        param_val2 = ParameterValue(0.12345, date_time=date_time - timedelta(seconds=1))
-        cals2.add_parameter_value(param_val2, "amp", 3, "x")
-        self.assertFalse(cals1 == cals2)
-
-        # The two objects are different due to missing parameter value
-        cals3 = Calibrations.from_backend(
-            backend, libraries=[library], add_parameter_defaults=False
-        )
-        self.assertFalse(cals1 == cals3)
-
-        # The two objects are identical due to time stamps
-        cals2.add_parameter_value(param_val, "amp", 3, "x")
-        self.assertFalse(cals1 == cals3)
-
-        # The schedules contained in the cals are different.
-        library2 = FixedFrequencyTransmon(basis_gates=["sx", "x", "y"])
-        cals1 = Calibrations.from_backend(backend, libraries=[library])
-        cals2 = Calibrations.from_backend(backend, libraries=[library2])
-        self.assertFalse(cals1 == cals2)
-
-        # Ensure that the equality is not sensitive to parameter adding order.
-        cals1 = Calibrations.from_backend(
-            backend, libraries=[library], add_parameter_defaults=False
-        )
-        cals2 = Calibrations.from_backend(
-            backend, libraries=[library], add_parameter_defaults=False
-        )
-        param_val1 = ParameterValue(0.54321, date_time=date_time)
-        param_val2 = ParameterValue(0.12345, date_time=date_time - timedelta(seconds=1))
-
-        cals1.add_parameter_value(param_val2, "amp", 3, "x")
-        cals1.add_parameter_value(param_val1, "amp", 3, "x")
-
-        cals2.add_parameter_value(param_val1, "amp", 3, "x")
-        cals2.add_parameter_value(param_val2, "amp", 3, "x")
-
-        self.assertTrue(cals1 == cals2)
+        self.assertRoundTripSerializable(cals)

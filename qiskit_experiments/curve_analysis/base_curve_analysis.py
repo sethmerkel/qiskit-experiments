@@ -20,6 +20,8 @@ from typing import Dict, List, Union
 
 import lmfit
 
+from qiskit.utils.deprecation import deprecate_func
+
 from qiskit_experiments.data_processing import DataProcessor
 from qiskit_experiments.data_processing.processor_library import get_processor
 from qiskit_experiments.framework import (
@@ -35,9 +37,9 @@ from qiskit_experiments.visualization import (
     LegacyCurveCompatDrawer,
     MplDrawer,
 )
-from qiskit_experiments.warnings import deprecated_function
 
-from .curve_data import CurveData, CurveFitResult, ParameterRepr
+from .curve_data import CurveFitResult, ParameterRepr
+from .scatter_table import ScatterTable
 
 PARAMS_ENTRY_PREFIX = "@Parameters_"
 DATA_ENTRY_PREFIX = "@Data_"
@@ -96,12 +98,10 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
     This method creates analysis results for important fit parameters
     that might be defined by analysis options ``result_parameters``.
 
-    .. rubric:: _create_curve_data
+    .. rubric:: _create_figures
 
-    This method to creates analysis results for the formatted dataset, i.e. data used for the fitting.
-    Entries are created when the analysis option ``return_data_points`` is ``True``.
-    If analysis consists of multiple series, analysis result is created for
-    each curve data in the series definitions.
+    This method creates figures by consuming the scatter table data.
+    Figures are created when the analysis option ``plot`` is ``True``.
 
     .. rubric:: _initialize
 
@@ -131,9 +131,11 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
         return self._options.plotter
 
     @property
-    @deprecated_function(
-        last_version="0.6",
-        msg="Replaced by `plotter` from the new visualization submodule.",
+    @deprecate_func(
+        since="0.5",
+        additional_msg="Use `plotter` from the new visualization module.",
+        removal_timeline="after 0.6",
+        package_name="qiskit-experiments",
     )
     def drawer(self) -> BaseDrawer:
         """A short-cut for curve drawer instance, if set. ``None`` otherwise."""
@@ -151,21 +153,22 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
                 the analysis result.
             plot_raw_data (bool): Set ``True`` to draw processed data points,
                 dataset without formatting, on canvas. This is ``False`` by default.
-            plot (bool): Set ``True`` to create figure for fit result.
-                This is ``True`` by default.
-            return_fit_parameters (bool): Set ``True`` to return all fit model parameters
-                with details of the fit outcome. Default to ``True``.
-            return_data_points (bool): Set ``True`` to include in the analysis result
+            plot (bool): Set ``True`` to create figure for fit result or ``False`` to
+                not create a figure. This overrides the behavior of ``generate_figures``.
+            return_fit_parameters (bool): (Deprecated) Set ``True`` to return all fit model parameters
+                with details of the fit outcome. Default to ``False``.
+            return_data_points (bool): (Deprecated) Set ``True`` to include in the analysis result
                 the formatted data points given to the fitter. Default to ``False``.
             data_processor (Callable): A callback function to format experiment data.
                 This can be a :class:`.DataProcessor`
                 instance that defines the `self.__call__` method.
             normalization (bool): Set ``True`` to normalize y values within range [-1, 1].
                 Default to ``False``.
-            average_method (str): Method to average the y values when the same x values
-                appear multiple times. One of "sample", "iwv" (i.e. inverse weighted variance),
-                "shots_weighted". See :func:`.mean_xy_data` for details. Default to
-                "shots_weighted".
+            average_method (Literal["sample", "iwv", "shots_weighted"]): Method
+                to average the y values when the same x values
+                appear multiple times. One of "sample", "iwv" (i.e. inverse
+                weighted variance), "shots_weighted". See :func:`.mean_xy_data`
+                for details. Default to "shots_weighted".
             p0 (Dict[str, float]): Initial guesses for the fit parameters.
                 The dictionary is keyed on the fit parameter names.
             bounds (Dict[str, Tuple[float, float]]): Boundary of fit parameters.
@@ -178,6 +181,7 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
             lmfit_options (Dict[str, Any]): Options that are passed to the
                 LMFIT minimizer. Acceptable options depend on fit_method.
             x_key (str): Circuit metadata key representing a scanned value.
+            fit_category (str): Name of dataset in the scatter table to fit.
             result_parameters (List[Union[str, ParameterRepr]): Parameters reported in the
                 database as a dedicated entry. This is a list of parameter representation
                 which is either string or ParameterRepr object. If you provide more
@@ -203,13 +207,13 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
 
         options.plotter = CurvePlotter(MplDrawer())
         options.plot_raw_data = False
-        options.plot = True
         options.return_fit_parameters = True
         options.return_data_points = False
         options.data_processor = None
         options.normalization = False
         options.average_method = "shots_weighted"
         options.x_key = "xval"
+        options.fit_category = "formatted"
         options.result_parameters = []
         options.extra = {}
         options.fit_method = "least_squares"
@@ -226,97 +230,47 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
 
         return options
 
-    def set_options(self, **fields):
-        """Set the analysis options for :meth:`run` method.
-
-        Args:
-            fields: The fields to update the options
-
-        Raises:
-            KeyError: When removed option ``curve_fitter`` is set.
-        """
-        # TODO remove this in Qiskit Experiments v0.5
-
-        if "curve_fitter_options" in fields:
-            warnings.warn(
-                "The option 'curve_fitter_options' is replaced with 'lmfit_options.' "
-                "This option will be removed in Qiskit Experiments 0.5.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            fields["lmfit_options"] = fields.pop("curve_fitter_options")
-
-        # TODO remove this in Qiskit Experiments 0.6
-        if "curve_drawer" in fields:
-            warnings.warn(
-                "The option 'curve_drawer' is replaced with 'plotter'. "
-                "This option will be removed in Qiskit Experiments 0.6.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-            # Set the plotter drawer to `curve_drawer`. If `curve_drawer` is the right type, set it
-            # directly. If not, wrap it in a compatibility drawer.
-            if isinstance(fields["curve_drawer"], BaseDrawer):
-                plotter = self.options.plotter
-                plotter.drawer = fields.pop("curve_drawer")
-                fields["plotter"] = plotter
-            else:
-                drawer = fields["curve_drawer"]
-                compat_drawer = LegacyCurveCompatDrawer(drawer)
-                plotter = self.options.plotter
-                plotter.drawer = compat_drawer
-                fields["plotter"] = plotter
-
-        super().set_options(**fields)
-
     @abstractmethod
     def _run_data_processing(
         self,
         raw_data: List[Dict],
-        models: List[lmfit.Model],
-    ) -> CurveData:
+        category: str = "raw",
+    ) -> ScatterTable:
         """Perform data processing from the experiment result payload.
 
         Args:
             raw_data: Payload in the experiment data.
-            models: A list of LMFIT models that provide the model name and
-                optionally data sorting keys.
+            category: Category string of the output dataset.
 
         Returns:
             Processed data that will be sent to the formatter method.
-
-        Raises:
-            DataProcessorError: When model is multi-objective function but
-                data sorting option is not provided.
-            DataProcessorError: When key for x values is not found in the metadata.
         """
 
     @abstractmethod
     def _format_data(
         self,
-        curve_data: CurveData,
-    ) -> CurveData:
-        """Postprocessing for the processed dataset.
+        curve_data: ScatterTable,
+        category: str = "formatted",
+    ) -> ScatterTable:
+        """Postprocessing for preparing the fitting data.
 
         Args:
             curve_data: Processed dataset created from experiment results.
+            category: Category string of the output dataset.
 
         Returns:
-            Formatted data.
+            New scatter table instance including fit data.
         """
 
     @abstractmethod
     def _run_curve_fit(
         self,
-        curve_data: CurveData,
-        models: List[lmfit.Model],
+        curve_data: ScatterTable,
     ) -> CurveFitResult:
         """Perform curve fitting on given data collection and fit models.
 
         Args:
             curve_data: Formatted data to fit.
-            models: A list of LMFIT models that are used to build a cost function
-                for the LMFIT minimizer.
 
         Returns:
             The best fitting outcome with minimum reduced chi-squared value.
@@ -334,7 +288,7 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
         Returns:
             String that represents fit result quality. Usually "good" or "bad".
         """
-        if fit_data.reduced_chisq < 3.0:
+        if 0 < fit_data.reduced_chisq < 3.0:
             return "good"
         return "bad"
 
@@ -383,41 +337,52 @@ class BaseCurveAnalysis(BaseAnalysis, ABC):
 
         return outcomes
 
+    # pylint: disable=unused-argument
     def _create_curve_data(
         self,
-        curve_data: CurveData,
-        models: List[lmfit.Model],
+        curve_data: ScatterTable,
         **metadata,
     ) -> List[AnalysisResultData]:
         """Create analysis results for raw curve data.
 
         Args:
             curve_data: Formatted data that is used for the fitting.
-            models: A list of LMFIT models that provides model names
-                to extract subsets of experiment data.
 
         Returns:
             List of analysis result data.
         """
         samples = []
 
-        for model in models:
-            sub_data = curve_data.get_subset_of(model._name)
+        for model_name, sub_data in list(curve_data.groupby("model_name")):
             raw_datum = AnalysisResultData(
                 name=DATA_ENTRY_PREFIX + self.__class__.__name__,
                 value={
-                    "xdata": sub_data.x,
-                    "ydata": sub_data.y,
-                    "sigma": sub_data.y_err,
+                    "xdata": sub_data.xval.to_numpy(),
+                    "ydata": sub_data.yval.to_numpy(),
+                    "sigma": sub_data.yerr.to_numpy(),
                 },
                 extra={
-                    "name": model._name,
+                    "name": model_name,
                     **metadata,
                 },
             )
             samples.append(raw_datum)
 
         return samples
+
+    def _create_figures(
+        self,
+        curve_data: ScatterTable,
+    ) -> List["matplotlib.figure.Figure"]:
+        """Create a list of figures from the curve data.
+
+        Args:
+            curve_data: Scatter data table containing all data points.
+
+        Returns:
+            A list of figures.
+        """
+        return []
 
     def _initialize(
         self,

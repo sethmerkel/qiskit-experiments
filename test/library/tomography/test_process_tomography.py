@@ -13,7 +13,6 @@
 """
 ProcessTomography experiment tests
 """
-import io
 from test.base import QiskitExperimentsTestCase
 
 import ddt
@@ -21,7 +20,7 @@ import numpy as np
 from uncertainties import UFloat
 
 import qiskit.quantum_info as qi
-from qiskit import QuantumCircuit, qpy
+from qiskit import QuantumCircuit
 from qiskit.circuit.library import XGate, CXGate
 from qiskit.result import LocalReadoutMitigator
 
@@ -97,22 +96,15 @@ class TestProcessTomography(QiskitExperimentsTestCase):
         self.assertExperimentDone(expdata)
         self.assertFalse(expdata.analysis_results())
 
-    def test_circuit_serialization(self):
+    def test_circuit_roundtrip_serializable(self):
         """Test simple circuit serialization"""
         circ = QuantumCircuit(2)
         circ.h(0)
         circ.s(0)
         circ.cx(0, 1)
 
-        exp = ProcessTomography(circ)
-        circs = exp.circuits()
-
-        qpy_file = io.BytesIO()
-        qpy.dump(circs, qpy_file)
-        qpy_file.seek(0)
-        new_circs = qpy.load(qpy_file)
-
-        self.assertEqual(circs, new_circs)
+        exp = ProcessTomography(circ, preparation_indices=[0], measurement_indices=[0])
+        self.assertRoundTripSerializable(exp._transpiled_circuits())
 
     def test_cvxpy_gaussian_lstsq_cx(self):
         """Test fitter with high fidelity threshold"""
@@ -352,7 +344,7 @@ class TestProcessTomography(QiskitExperimentsTestCase):
         )
         loaded_exp = ProcessTomography.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)
 
     def test_analysis_config(self):
         """ "Test converting analysis to and from config works"""
@@ -367,8 +359,8 @@ class TestProcessTomography(QiskitExperimentsTestCase):
         exp = ProcessTomography(XGate())
         expdata = exp.run(backend)
         self.assertExperimentDone(expdata)
-        self.assertRoundTripPickle(expdata, check_func=self.experiment_data_equiv)
-        self.assertRoundTripSerializable(expdata, check_func=self.experiment_data_equiv)
+        self.assertRoundTripPickle(expdata)
+        self.assertRoundTripSerializable(expdata)
 
     def test_target_none(self):
         """Test setting target=None disables fidelity calculation."""
@@ -438,7 +430,7 @@ class TestProcessTomography(QiskitExperimentsTestCase):
             CXGate(), measurement_basis=meas_basis, preparation_basis=prep_basis
         )
         exp.backend = backend
-        expdata = exp.run(shots=2000).block_for_results()
+        expdata = exp.run(shots=2000)
         self.assertExperimentDone(expdata)
         fid = expdata.analysis_results("process_fidelity").value
         self.assertGreater(fid, 0.95)
@@ -467,7 +459,7 @@ class TestProcessTomography(QiskitExperimentsTestCase):
         # Run experiment
         exp = ProcessTomography(CXGate(), measurement_basis=meas_basis)
         exp.backend = backend
-        expdata = exp.run(shots=2000).block_for_results()
+        expdata = exp.run(shots=2000)
         self.assertExperimentDone(expdata)
         fid = expdata.analysis_results("process_fidelity").value
         self.assertGreater(fid, 0.95)
@@ -522,6 +514,8 @@ class TestProcessTomography(QiskitExperimentsTestCase):
                     f_threshold,
                     msg=f"{fitter} fit fidelity is low for qubits {qubits}",
                 )
+                self.assertTrue(mitfid.extra["mitigated"])
+                self.assertFalse(nomitfid.extra["mitigated"])
 
     @ddt.data([0], [1], [0, 1], [1, 0])
     def test_qpt_conditional_circuit(self, circuit_clbits):
@@ -595,6 +589,8 @@ class TestProcessTomography(QiskitExperimentsTestCase):
                 exp.analysis.set_options()
                 if fitter:
                     exp.analysis.set_options(fitter=fitter)
+                    if "cvxpy" in fitter:
+                        exp.analysis.set_options(fitter_options={"eps_abs": 3e-5})
                 fitdata = exp.analysis.run(expdata)
                 states = fitdata.analysis_results("state")
                 for state in states:

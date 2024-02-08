@@ -14,12 +14,12 @@ T1 Experiment class.
 """
 
 from typing import List, Optional, Union, Sequence
-import numpy as np
 
-from qiskit import QuantumCircuit
+import numpy as np
+from qiskit.circuit import QuantumCircuit
 from qiskit.providers.backend import Backend
+
 from qiskit_experiments.framework import BackendTiming, BaseExperiment, Options
-from qiskit_experiments.warnings import qubit_deprecate
 from qiskit_experiments.library.characterization.analysis.t1_analysis import T1Analysis
 
 
@@ -53,7 +53,6 @@ class T1(BaseExperiment):
         options.delays = None
         return options
 
-    @qubit_deprecate()
     def __init__(
         self,
         physical_qubits: Sequence[int],
@@ -96,12 +95,7 @@ class T1(BaseExperiment):
             circ.barrier(0)
             circ.measure(0, 0)
 
-            circ.metadata = {
-                "experiment_type": self._type,
-                "qubit": self.physical_qubits[0],
-                "unit": "s",
-            }
-            circ.metadata["xval"] = timing.delay_time(time=delay)
+            circ.metadata = {"xval": timing.delay_time(time=delay)}
 
             circuits.append(circ)
 

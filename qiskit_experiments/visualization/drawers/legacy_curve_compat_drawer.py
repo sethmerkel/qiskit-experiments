@@ -14,21 +14,16 @@
 
 import warnings
 from typing import Any, Optional, Sequence, Tuple, Union
-
 import numpy as np
 
+from qiskit.utils.deprecation import deprecate_func
+
 from qiskit_experiments.curve_analysis.visualization import BaseCurveDrawer
-from qiskit_experiments.warnings import deprecated_class
 
 from ..utils import ExtentTuple
 from .base_drawer import BaseDrawer
 
 
-@deprecated_class(
-    "0.6",
-    msg="Legacy drawers from `.curve_analysis.visualization are deprecated. This compatibility wrapper "
-    "will be removed alongside the deprecated modules removal",
-)
 class LegacyCurveCompatDrawer(BaseDrawer):
     """A compatibility wrapper for the legacy and deprecated :class:`BaseCurveDrawer`.
 
@@ -44,6 +39,13 @@ class LegacyCurveCompatDrawer(BaseDrawer):
         :meth:`scatter`) are unsupported and do nothing.
     """
 
+    @deprecate_func(
+        since="0.5",
+        additional_msg="Legacy drawers from ``curve_analysis.visualization`` are deprecated. "
+        "This compatibility wrapper will be removed alongside the deprecated modules removal",
+        removal_timeline="after 0.6",
+        package_name="qiskit-experiments",
+    )
     def __init__(self, curve_drawer: BaseCurveDrawer):
         """Create a LegacyCurveCompatDrawer instance.
 
@@ -117,6 +119,37 @@ class LegacyCurveCompatDrawer(BaseDrawer):
             options: Valid options for the drawer backend API.
         """
         self._curve_drawer.draw_fit_line(x_data, y_data, name, **options)
+
+    # pylint: disable=unused-argument
+    def hline(
+        self,
+        y_value: float,
+        name: Optional[str] = None,
+        label: Optional[str] = None,
+        legend: bool = False,
+        **options,
+    ):
+        """Draw a horizontal line.
+
+        .. note::
+
+            This method was added to fulfill the
+            :class:`~qiskit_experiments.visualization.BaseDrawer` interface,
+            but it is not supported for this class since there was no
+            equivalent in
+            :class:`~qiskit_experiments.curve_analysis.visualization.BaseCurveDrawer`.
+
+        Args:
+            y_value: Y value for line.
+            name: Name of this series.
+            label: Unsupported label option
+            legend: Unsupported legend option
+            options: Additional options
+        """
+        warnings.warn(
+            "hline is not supported by the LegacyCurveCompatDrawer",
+            UserWarning,
+        )
 
     # pylint: disable=unused-argument
     def filled_y_area(

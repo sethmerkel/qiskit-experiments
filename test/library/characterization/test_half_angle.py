@@ -16,8 +16,8 @@ from test.base import QiskitExperimentsTestCase
 import copy
 
 from qiskit import pulse, transpile
-from qiskit.providers.fake_provider import FakeAthens
 from qiskit.pulse import InstructionScheduleMap
+from qiskit_ibm_runtime.fake_provider import FakeAthens
 
 from qiskit_experiments.test.mock_iq_backend import MockIQBackend
 from qiskit_experiments.test.mock_iq_helpers import MockIQHalfAngleHelper as HalfAngleHelper
@@ -39,17 +39,17 @@ class TestHalfAngle(QiskitExperimentsTestCase):
             exp_data = hac.run(backend)
 
             self.assertExperimentDone(exp_data)
-            d_theta = exp_data.analysis_results(1).value.n
+            d_theta = exp_data.analysis_results("d_hac").value.n
 
             self.assertTrue(abs(d_theta - error) < tol)
 
     def test_circuits(self):
-        """Test that transpiling works and that we can have a y gate with a calibration."""
+        """Test that transpiling works."""
 
         qubit = 1
 
         inst_map = InstructionScheduleMap()
-        for inst in ["sx", "y"]:
+        for inst in ["sx", "x"]:
             inst_map.add(inst, (qubit,), pulse.Schedule(name=inst))
 
         hac = HalfAngle([qubit])
@@ -64,8 +64,8 @@ class TestHalfAngle(QiskitExperimentsTestCase):
             self.assertEqual(circ.count_ops()["sx"], idx * 2 + 2)
             self.assertEqual(circ.calibrations["sx"][((qubit,), ())], pulse.Schedule(name="sx"))
             if idx > 0:
-                self.assertEqual(circ.count_ops()["y"], idx)
-                self.assertEqual(circ.calibrations["y"][((qubit,), ())], pulse.Schedule(name="y"))
+                self.assertEqual(circ.count_ops()["x"], idx)
+                self.assertEqual(circ.calibrations["x"][((qubit,), ())], pulse.Schedule(name="x"))
 
     def test_experiment_config(self):
         """Test converting to and from config works"""
@@ -74,3 +74,8 @@ class TestHalfAngle(QiskitExperimentsTestCase):
         loaded_exp = HalfAngle.from_config(config)
         self.assertNotEqual(exp, loaded_exp)
         self.assertEqual(config, loaded_exp.config())
+
+    def test_circuit_roundtrip_serializable(self):
+        """Test circuits round trip JSON serialization for the Experiment and ExperimentData objects."""
+        exp = HalfAngle([0])
+        self.assertRoundTripSerializable(exp._transpiled_circuits())

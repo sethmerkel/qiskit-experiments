@@ -16,8 +16,7 @@ Test T1 experiment
 from test.base import QiskitExperimentsTestCase
 import numpy as np
 from qiskit.qobj.utils import MeasLevel
-from qiskit.providers.fake_provider import FakeAthensV2
-from qiskit_ibm_experiment import IBMExperimentService
+from qiskit_ibm_runtime.fake_provider import FakeAthensV2
 from qiskit_experiments.test.noisy_delay_aer_simulator import NoisyDelayAerBackend
 from qiskit_experiments.framework import ExperimentData, ParallelExperiment
 from qiskit_experiments.library import T1
@@ -42,22 +41,14 @@ class TestT1(QiskitExperimentsTestCase):
         exp = T1([0], delays)
 
         exp.analysis.set_options(p0={"amp": 1, "tau": t1, "base": 0})
-        exp_data = exp.run(backend, shots=10000, seed_simulator=1).block_for_results()
+        exp_data = exp.run(backend, shots=10000, seed_simulator=1)
         self.assertExperimentDone(exp_data)
-        self.assertRoundTripSerializable(exp_data, check_func=self.experiment_data_equiv)
-        self.assertRoundTripPickle(exp_data, check_func=self.experiment_data_equiv)
+        self.assertRoundTripSerializable(exp_data)
+        self.assertRoundTripPickle(exp_data)
         res = exp_data.analysis_results("T1")
         self.assertEqual(res.quality, "good")
         self.assertAlmostEqual(res.value.n, t1, delta=3)
         self.assertEqual(res.extra["unit"], "s")
-
-        exp_data.service = IBMExperimentService(local=True, local_save=False)
-        exp_data.save()
-        loaded_data = ExperimentData.load(exp_data.experiment_id, exp_data.service)
-        exp_res = exp_data.analysis_results()
-        load_res = loaded_data.analysis_results()
-        for exp_res, load_res in zip(exp_res, load_res):
-            self.analysis_result_equiv(exp_res, load_res)
 
     def test_t1_measurement_level_1(self):
         """
@@ -66,13 +57,13 @@ class TestT1(QiskitExperimentsTestCase):
 
         ns = 1e-9
         mu = 1e-6
-        t1 = [45 * mu, 45 * mu]
+        t1 = 45 * mu
 
         # delays
         delays = np.logspace(1, 11, num=23, base=np.exp(1))
         delays *= ns
         delays = np.insert(delays, 0, 0)
-        delays = np.append(delays, [t1[0] * 3])
+        delays = np.append(delays, [t1 * 3])
 
         num_shots = 4096
         backend = MockIQBackend(
@@ -87,21 +78,21 @@ class TestT1(QiskitExperimentsTestCase):
         exp0 = T1([0], delays)
         exp0.analysis = T1KerneledAnalysis()
 
-        exp0.analysis.set_options(p0={"amp": 1, "tau": t1[0], "base": 0})
+        exp0.analysis.set_options(p0={"amp": 1, "tau": t1, "base": 0})
         expdata0 = exp0.run(
             backend=backend,
             meas_return="avg",
             meas_level=MeasLevel.KERNELED,
             shots=num_shots,
-        ).block_for_results()
+        )
         self.assertExperimentDone(expdata0)
 
-        self.assertRoundTripSerializable(expdata0, check_func=self.experiment_data_equiv)
-        self.assertRoundTripPickle(expdata0, check_func=self.experiment_data_equiv)
+        self.assertRoundTripSerializable(expdata0)
+        self.assertRoundTripPickle(expdata0)
 
         res = expdata0.analysis_results("T1")
         self.assertEqual(res.quality, "good")
-        self.assertAlmostEqual(res.value.n, t1[0], delta=3)
+        self.assertAlmostEqual(res.value.n, t1, delta=3)
         self.assertEqual(res.extra["unit"], "s")
 
     def test_t1_parallel(self):
@@ -122,23 +113,14 @@ class TestT1(QiskitExperimentsTestCase):
         exp0 = T1(physical_qubits=[qubit0], delays=delays)
         exp2 = T1(physical_qubits=[qubit2], delays=delays)
 
-        par_exp = ParallelExperiment([exp0, exp2])
-        res = par_exp.run(backend=backend, shots=10000, seed_simulator=1).block_for_results()
+        par_exp = ParallelExperiment([exp0, exp2], flatten_results=False)
+        res = par_exp.run(backend=backend, shots=10000, seed_simulator=1)
         self.assertExperimentDone(res)
 
         for i, qb in enumerate(quantum_bit):
             sub_res = res.child_data(i).analysis_results("T1")
             self.assertEqual(sub_res.quality, "good")
             self.assertAlmostEqual(sub_res.value.n, t1[qb], delta=3)
-
-        res.service = IBMExperimentService(local=True, local_save=False)
-        res.save()
-        loaded_data = ExperimentData.load(res.experiment_id, res.service)
-
-        for i in range(2):
-            sub_res = res.child_data(i).analysis_results("T1")
-            sub_loaded = loaded_data.child_data(i).analysis_results("T1")
-            self.assertEqual(repr(sub_res), repr(sub_loaded))
 
     def test_t1_parallel_measurement_level_1(self):
         """
@@ -147,34 +129,26 @@ class TestT1(QiskitExperimentsTestCase):
 
         ns = 1e-9
         mu = 1e-6
-        t1 = [25 * mu, 20 * mu, 15 * mu]
+        t1s = [25 * mu, 20 * mu]
+        qubits = [0, 1]
         num_shots = 4096
-
-        # qubits
-        qubit0 = 0
-        qubit1 = 1
-
-        quantum_bit = [qubit0, qubit1]
 
         # Delays
         delays = np.logspace(1, 11, num=23, base=np.exp(1))
         delays *= ns
         delays = np.insert(delays, 0, 0)
-        delays = np.append(delays, [t1[0] * 3])
+        delays = np.append(delays, [t1s[0] * 3])
 
-        # Experiments
-        exp0 = T1(physical_qubits=[qubit0], delays=delays)
-        exp0.analysis = T1KerneledAnalysis()
+        par_exp_list = []
+        exp_helpers = []
+        for qidx, t1 in zip(qubits, t1s):
+            # Experiment
+            exp = T1(physical_qubits=[qidx], delays=delays)
+            exp.analysis = T1KerneledAnalysis()
+            par_exp_list.append(exp)
 
-        exp2 = T1(physical_qubits=[qubit1], delays=delays)
-        exp2.analysis = T1KerneledAnalysis()
-
-        par_exp_list = [exp0, exp2]
-        par_exp = ParallelExperiment([exp0, exp2])
-
-        # Helpers
-        exp_helper = [
-            MockIQT1Helper(
+            # Helper
+            helper = MockIQT1Helper(
                 t1=t1,
                 iq_cluster_centers=[
                     ((-5.0, -4.0), (-5.0, 4.0)),
@@ -183,10 +157,15 @@ class TestT1(QiskitExperimentsTestCase):
                 ],
                 iq_cluster_width=[1.0, 2.0, 1.0],
             )
-            for _ in par_exp_list
-        ]
+            exp_helpers.append(helper)
+
+        par_exp = ParallelExperiment(
+            par_exp_list,
+            flatten_results=False,
+        )
         par_helper = MockIQParallelExperimentHelper(
-            exp_list=par_exp_list, exp_helper_list=exp_helper
+            exp_list=par_exp_list,
+            exp_helper_list=exp_helpers,
         )
 
         # Backend
@@ -199,23 +178,14 @@ class TestT1(QiskitExperimentsTestCase):
             rng_seed=1,
             meas_level=MeasLevel.KERNELED,
             meas_return="avg",
-        ).block_for_results()
+        )
         self.assertExperimentDone(res)
 
         # Checking analysis
-        for i, qb in enumerate(quantum_bit):
+        for i, t1 in enumerate(t1s):
             sub_res = res.child_data(i).analysis_results("T1")
             self.assertEqual(sub_res.quality, "good")
-            self.assertAlmostEqual(sub_res.value.n, t1[qb], delta=3)
-
-        res.service = IBMExperimentService(local=True, local_save=False)
-        res.save()
-        loaded_data = ExperimentData.load(res.experiment_id, res.service)
-
-        for i in range(2):
-            sub_res = res.child_data(i).analysis_results("T1")
-            sub_loaded = loaded_data.child_data(i).analysis_results("T1")
-            self.assertEqual(repr(sub_res), repr(sub_loaded))
+            self.assertAlmostEqual(sub_res.value.n, t1, delta=3)
 
     def test_t1_analysis(self):
         """
@@ -231,17 +201,13 @@ class TestT1(QiskitExperimentsTestCase):
             data.add_data(
                 {
                     "counts": {"0": count0, "1": 10000 - count0},
-                    "metadata": {
-                        "xval": (3 * i + 1) * 1e-9,
-                        "experiment_type": "T1",
-                        "qubit": 0,
-                        "unit": "s",
-                    },
+                    "metadata": {"xval": (3 * i + 1) * 1e-9},
                 }
             )
 
-        res, _ = T1Analysis()._run_analysis(data)
-        result = res[1]
+        experiment_data = T1Analysis().run(data, plot=False)
+        result = experiment_data.analysis_results("T1")
+
         self.assertEqual(result.quality, "good")
         self.assertAlmostEqual(result.value.nominal_value, 25e-9, delta=3)
 
@@ -257,16 +223,8 @@ class TestT1(QiskitExperimentsTestCase):
         self.assertEqual(len(circs), len(delays))
 
         for delay, circ in zip(delays, circs):
-            xval = circ.metadata.pop("xval")
-            self.assertAlmostEqual(xval, delay)
-            self.assertEqual(
-                circ.metadata,
-                {
-                    "experiment_type": "T1",
-                    "qubit": 0,
-                    "unit": "s",
-                },
-            )
+            # xval is rounded to nealest granularity value.
+            self.assertAlmostEqual(circ.metadata["xval"], delay)
 
     def test_t1_low_quality(self):
         """
@@ -280,17 +238,12 @@ class TestT1(QiskitExperimentsTestCase):
             data.add_data(
                 {
                     "counts": {"0": 10, "1": 10},
-                    "metadata": {
-                        "xval": i * 1e-9,
-                        "experiment_type": "T1",
-                        "qubit": 0,
-                        "unit": "s",
-                    },
+                    "metadata": {"xval": i * 1e-9},
                 }
             )
 
-        res, _ = T1Analysis()._run_analysis(data)
-        result = res[1]
+        experiment_data = T1Analysis().run(data, plot=False)
+        result = experiment_data.analysis_results("T1")
         self.assertEqual(result.quality, "bad")
 
     def test_t1_parallel_exp_transpile(self):
@@ -307,7 +260,7 @@ class TestT1(QiskitExperimentsTestCase):
 
         exp1 = T1([1], delays=[50e-9, 100e-9, 160e-9])
         exp2 = T1([3], delays=[40e-9, 80e-9, 190e-9])
-        parexp = ParallelExperiment([exp1, exp2])
+        parexp = ParallelExperiment([exp1, exp2], flatten_results=False)
         parexp.set_transpile_options(
             basis_gates=basis_gates,
             instruction_durations=instruction_durations,
@@ -334,12 +287,17 @@ class TestT1(QiskitExperimentsTestCase):
         exp = T1([0], [1, 2, 3, 4, 5])
         loaded_exp = T1.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)
 
     def test_roundtrip_serializable(self):
         """Test round trip JSON serialization"""
+        exp = T1([0], [1, 2])
+        self.assertRoundTripSerializable(exp)
+
+    def test_circuit_roundtrip_serializable(self):
+        """Test circuit round trip JSON serialization"""
         exp = T1([0], [1, 2, 3, 4, 5])
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        self.assertRoundTripSerializable(exp._transpiled_circuits())
 
     def test_analysis_config(self):
         """ "Test converting analysis to and from config works"""
@@ -360,13 +318,5 @@ class TestT1(QiskitExperimentsTestCase):
         self.assertEqual(len(circs), len(delays))
 
         for delay, circ in zip(delays, circs):
-            xval = circ.metadata.pop("xval")
-            self.assertAlmostEqual(xval, delay)
-            self.assertEqual(
-                circ.metadata,
-                {
-                    "experiment_type": "T1",
-                    "qubit": 0,
-                    "unit": "s",
-                },
-            )
+            # xval is rounded to nealest granularity value.
+            self.assertAlmostEqual(circ.metadata["xval"], delay)

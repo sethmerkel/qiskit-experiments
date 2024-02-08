@@ -18,8 +18,8 @@ from test.base import QiskitExperimentsTestCase
 import numpy as np
 from ddt import ddt, named_data
 
-from qiskit.providers.fake_provider import FakeVigoV2
 from qiskit_aer import AerSimulator
+from qiskit_ibm_runtime.fake_provider import FakeVigoV2
 
 from qiskit_experiments.framework import ParallelExperiment
 from qiskit_experiments.library import T2Ramsey
@@ -75,10 +75,10 @@ class TestT2Ramsey(QiskitExperimentsTestCase):
 
         for user_p0 in [default_p0, {}]:
             exp.analysis.set_options(p0=user_p0)
-            expdata = exp.run(backend=backend, shots=2000, seed_simulator=1).block_for_results()
+            expdata = exp.run(backend=backend, shots=2000, seed_simulator=1)
             self.assertExperimentDone(expdata)
-            self.assertRoundTripSerializable(expdata, check_func=self.experiment_data_equiv)
-            self.assertRoundTripPickle(expdata, check_func=self.experiment_data_equiv)
+            self.assertRoundTripSerializable(expdata)
+            self.assertRoundTripPickle(expdata)
 
             result = expdata.analysis_results("T2star")
             self.assertAlmostEqual(
@@ -116,7 +116,7 @@ class TestT2Ramsey(QiskitExperimentsTestCase):
             [par_exp_qubits[1]], delays[1], osc_freq=osc_freq[par_exp_qubits[1]], backend=backend
         )
 
-        par_exp = ParallelExperiment([exp0, exp2])
+        par_exp = ParallelExperiment([exp0, exp2], flatten_results=False)
 
         exp0_p0 = {
             "A": 0.5,
@@ -137,7 +137,7 @@ class TestT2Ramsey(QiskitExperimentsTestCase):
         exp0.analysis.set_options(p0=exp0_p0)
         exp2.analysis.set_options(p0=exp2_p0)
 
-        expdata = par_exp.run(backend=backend, shots=2000, seed_simulator=1).block_for_results()
+        expdata = par_exp.run(backend=backend, shots=2000, seed_simulator=1)
         self.assertExperimentDone(expdata)
 
         for i, qb in enumerate(par_exp_qubits):
@@ -218,12 +218,18 @@ class TestT2Ramsey(QiskitExperimentsTestCase):
         exp = T2Ramsey([0], [1, 2, 3, 4, 5])
         loaded_exp = T2Ramsey.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)
 
     def test_roundtrip_serializable(self):
         """Test round trip JSON serialization"""
-        exp = T2Ramsey([0], [1, 2, 3, 4, 5])
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        exp = T2Ramsey([0], [1, 2])
+        self.assertRoundTripSerializable(exp)
+
+    def test_circuit_roundtrip_serializable(self):
+        """Test round trip JSON serialization"""
+        backend = FakeVigoV2()
+        exp = T2Ramsey([0], [1, 2], backend=backend)
+        self.assertRoundTripSerializable(exp._transpiled_circuits())
 
     def test_analysis_config(self):
         """ "Test converting analysis to and from config works"""

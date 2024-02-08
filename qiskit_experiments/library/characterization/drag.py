@@ -24,7 +24,6 @@ from qiskit.pulse import ScheduleBlock
 from qiskit_experiments.framework import BaseExperiment, Options
 from qiskit_experiments.framework.restless_mixin import RestlessMixin
 from qiskit_experiments.library.characterization.analysis import DragCalAnalysis
-from qiskit_experiments.warnings import qubit_deprecate
 
 
 class RoughDrag(BaseExperiment, RestlessMixin):
@@ -93,7 +92,6 @@ class RoughDrag(BaseExperiment, RestlessMixin):
 
         return options
 
-    @qubit_deprecate()
     def __init__(
         self,
         physical_qubits: Sequence[int],
@@ -168,13 +166,11 @@ class RoughDrag(BaseExperiment, RestlessMixin):
             )
 
             for beta_val in self.experiment_options.betas:
-                beta_val = np.round(beta_val, decimals=6)
+                beta_val = float(np.round(beta_val, decimals=6))
 
                 assigned_circuit = circuit.assign_parameters({beta: beta_val}, inplace=False)
 
                 assigned_circuit.metadata = {
-                    "experiment_type": self._type,
-                    "qubits": self.physical_qubits,
                     "xval": beta_val,
                     "nrep": rep,
                 }

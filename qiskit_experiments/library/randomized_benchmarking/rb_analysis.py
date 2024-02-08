@@ -110,7 +110,7 @@ class RBAnalysis(curve.CurveAnalysis):
     def _generate_fit_guesses(
         self,
         user_opt: curve.FitOptions,
-        curve_data: curve.CurveData,
+        curve_data: curve.ScatterTable,
     ) -> Union[curve.FitOptions, List[curve.FitOptions]]:
         """Create algorithmic initial fit guess from analysis options and curve data.
 
@@ -400,7 +400,7 @@ def _exclude_1q_error(
             or not str(analysis_data.device_components[0]).startswith("Q")
         ):
             continue
-        qind = analysis_data.device_components[0]._index
+        qind = analysis_data.device_components[0].index
         gate = analysis_data.name[4:]
         formatted_key = (qind,), gate
         epg_1qs[formatted_key] = analysis_data.value

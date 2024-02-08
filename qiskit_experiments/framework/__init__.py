@@ -24,10 +24,9 @@ The experiment framework broadly defines an experiment as the execution of one o
 circuits on a device, and analysis of the resulting measurement data
 to return one or more derived results.
 
-The interface for running an experiment is through the *Experiment* classes,
-such as those contained in the :mod:`~qiskit_experiments.library`.
-The following pseudo-code illustrates the typical workflow in Qiskit Experiments
-for
+The interface for running an experiment is through the ``Experiment`` classes subclassed from
+:class:`.BaseExperiment`, such as those contained in the :mod:`~qiskit_experiments.library`. The
+following pseudo-code illustrates the typical workflow in Qiskit Experiments for
 
 - Initializing a new experiment
 - Running the experiment on a backend
@@ -87,10 +86,12 @@ Experiment Data Classes
     AnalysisStatus
     AnalysisResult
     AnalysisResultData
+    AnalysisResultTable
     ExperimentConfig
     AnalysisConfig
     ExperimentEncoder
     ExperimentDecoder
+    ArtifactData
     FigureData
 
 .. _composite-experiment:
@@ -101,6 +102,7 @@ Composite Experiment Classes
 .. autosummary::
     :toctree: ../stubs/
 
+    CompositeExperiment
     ParallelExperiment
     BatchExperiment
     CompositeAnalysis
@@ -128,21 +130,29 @@ Experiment Configuration Helper Classes
 from qiskit.providers.options import Options
 from qiskit_experiments.framework.backend_data import BackendData
 from qiskit_experiments.framework.analysis_result import AnalysisResult
-from qiskit_experiments.framework.experiment_data import (
+from qiskit_experiments.framework.status import (
     ExperimentStatus,
     AnalysisStatus,
+    AnalysisCallback,
+)
+from qiskit_experiments.framework.containers import (
+    ArtifactData,
     FigureData,
+    FigureType,
 )
 from .base_analysis import BaseAnalysis
 from .base_experiment import BaseExperiment
 from .backend_timing import BackendTiming
 from .configs import ExperimentConfig, AnalysisConfig
 from .analysis_result_data import AnalysisResultData
+from .analysis_result_table import AnalysisResultTable
 from .experiment_data import ExperimentData
 from .composite import (
     ParallelExperiment,
     BatchExperiment,
+    CompositeExperiment,
     CompositeAnalysis,
 )
 from .json import ExperimentEncoder, ExperimentDecoder
 from .restless_mixin import RestlessMixin
+from .package_deps import numpy_version

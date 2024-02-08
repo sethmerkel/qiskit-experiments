@@ -20,7 +20,6 @@ from qiskit.providers.backend import Backend
 from qiskit.quantum_info.operators.base_operator import BaseOperator
 from qiskit.quantum_info import Choi, Operator, Statevector, DensityMatrix, partial_trace
 
-from qiskit_experiments.warnings import deprecate_arguments
 from qiskit_experiments.exceptions import QiskitError
 from .tomography_experiment import TomographyExperiment, TomographyAnalysis, BaseAnalysis
 from .qpt_analysis import ProcessTomographyAnalysis
@@ -49,14 +48,6 @@ class ProcessTomography(TomographyExperiment):
 
     """
 
-    @deprecate_arguments(
-        {
-            "qubits": "physical_qubits",
-            "measurement_qubits": "measurement_indices",
-            "preparation_qubits": "preparation_indices",
-        },
-        "0.5",
-    )
     def __init__(
         self,
         circuit: Union[QuantumCircuit, Instruction, BaseOperator],
@@ -90,14 +81,14 @@ class ProcessTomography(TomographyExperiment):
             basis_indices: Optional, a list of basis indices for generating partial
                 tomography measurement data. Each item should be given as a pair of
                 lists of preparation and measurement basis configurations
-                ``([p[0], p[1], ..], m[0], m[1], ...])``, where ``p[i]`` is the
+                ``([p[0], p[1], ...], [m[0], m[1], ...])``, where ``p[i]`` is the
                 preparation basis index, and ``m[i]`` is the measurement basis index
                 for qubit-i. If not specified full tomography for all indices of the
                 preparation and measurement bases will be performed.
             conditional_circuit_clbits: Optional, the clbits in the source circuit to
                 be conditioned on when reconstructing the channel. If True all circuit
                 clbits will be conditioned on. Enabling this will return a list of
-                reconstrated channel components conditional on the values of these clbit
+                reconstructed channel components conditional on the values of these clbit
                 values.
             analysis: Optional, a custom analysis instance to use. If ``"default"``
                 :class:`~.ProcessTomographyAnalysis` will be used. If None no analysis

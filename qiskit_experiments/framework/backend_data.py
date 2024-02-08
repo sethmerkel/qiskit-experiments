@@ -17,7 +17,41 @@ class unifies data access for various data fields.
 """
 from qiskit.providers.models import PulseBackendConfiguration
 from qiskit.providers import BackendV1, BackendV2
-from qiskit.providers.fake_provider import fake_backend, FakeBackendV2, FakeBackend
+from qiskit.providers.fake_provider import FakeBackend
+from qiskit.providers.fake_provider.fake_backend import FakeBackendV2
+from qiskit.utils.deprecation import deprecate_func
+
+try:
+    # Removed in Qiskit 1.0. Different from the other FakeBackendV2's
+    from qiskit.providers.fake_provider import QiskitFakeBackendV2
+except ImportError:
+
+    class QiskitFakeBackendV2:
+        """Dummy class for when FakeBackendV2 import fails
+
+        This class is only used in isinstance checks. If the import fails, then
+        there won't be an instance of the class either so any dummy class is
+        fine.
+        """
+
+        pass
+
+
+try:
+    # A copy of qiskit.providers.fake_provider.fake_backend.FakeBackendV2, at
+    # least as of qiskit-ibm-runtime 0.18.0 and Qiskit 1.0
+    from qiskit_ibm_runtime.fake_provider.fake_backend import FakeBackendV2 as RuntimeFakeBackendV2
+except ImportError:
+
+    class RuntimeFakeBackendV2:
+        """Dummy class for when FakeBackendV2 import fails
+
+        This class is only used in isinstance checks. If the import fails, then
+        there won't be an instance of the class either so any dummy class is
+        fine.
+        """
+
+        pass
 
 
 class BackendData:
@@ -32,10 +66,10 @@ class BackendData:
             self._parse_additional_data()
 
     def _parse_additional_data(self):
-        # data specific parsing not done yet in qiskit-terra
+        # data specific parsing not done yet in upstream qiskit
         if hasattr(self._backend, "_conf_dict") and self._backend._conf_dict["open_pulse"]:
             if "u_channel_lo" not in self._backend._conf_dict:
-                self._backend._conf_dict["u_channel_lo"] = []  # to avoid terra bug
+                self._backend._conf_dict["u_channel_lo"] = []  # to avoid qiskit bug
             self._pulse_conf = PulseBackendConfiguration.from_dict(self._backend._conf_dict)
 
     @property
@@ -146,10 +180,7 @@ class BackendData:
             if self._v1:
                 return self._backend.configuration().timing_constraints.get("acquire_alignment", 1)
             elif self._v2:
-                # currently has a typo in terra
-                if hasattr(self._backend.target, "acquire_alignment"):
-                    return self._backend.target.acquire_alignment
-                return self._backend.target.aquire_alignment
+                return self._backend.target.acquire_alignment
         except AttributeError:
             return 1
         return 1
@@ -225,7 +256,7 @@ class BackendData:
 
         .. note::
 
-            The qiskit-terra base classes do not provide this information as a
+            The qiskit base classes do not provide this information as a
             standard backend property, but it is available from some providers
             in the data returned by the ``Backend.defaults()`` method.
         """
@@ -244,6 +275,16 @@ class BackendData:
         return None
 
     @property
+    @deprecate_func(
+        is_property=True,
+        since="0.6",
+        additional_msg=(
+            "is_simulator is deprecated because BackendV2 does not provide a "
+            "standard way for checking this property. Calling code must "
+            "determine if a backend uses a simulator from context."
+        ),
+        package_name="qiskit-experiments",
+    )  # Note: remove all FakeBackend imports when removing this code
     def is_simulator(self):
         """Returns True given an indication the backend is a simulator
 
@@ -252,13 +293,15 @@ class BackendData:
             For `BackendV2` we sometimes cannot be sure, because it lacks
             a `simulator` field, as was present in `BackendV1`'s configuration.
             We still check whether the backend inherits `FakeBackendV2`, for
-            either of its existing implementations in Terra.
+            either of its existing implementations in Qiskit.
         """
         if self._v1:
             if self._backend.configuration().simulator or isinstance(self._backend, FakeBackend):
                 return True
         if self._v2:
-            if isinstance(self._backend, (FakeBackendV2, fake_backend.FakeBackendV2)):
+            if isinstance(
+                self._backend, (FakeBackendV2, QiskitFakeBackendV2, RuntimeFakeBackendV2)
+            ):
                 return True
 
         return False

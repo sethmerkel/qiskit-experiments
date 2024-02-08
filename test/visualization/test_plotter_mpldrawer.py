@@ -32,6 +32,11 @@ from .mock_plotter import MockPlotter
 class TestPlotterAndMplDrawer(QiskitExperimentsTestCase):
     """Test generic plotter with Matplotlib drawer."""
 
+    def tearDown(self):
+        """Clean up test case state"""
+        plt.close("all")
+        super().tearDown()
+
     def test_end_to_end_short(self):
         """Test whether plotter with MplDrawer returns a figure."""
         plotter = MockPlotter(MplDrawer())
@@ -92,6 +97,19 @@ class TestPlotterAndMplDrawer(QiskitExperimentsTestCase):
                 msg=f"{axis} axis label does not contain unit: Could not find '{expected_units}' "
                 f"in '{actual_label}'.",
             )
+
+    def test_scale(self):
+        """Test the xscale and yscale figure options."""
+        plotter = MockPlotter(MplDrawer(), plotting_enabled=True)
+        plotter.set_figure_options(
+            xscale="quadratic",
+            yscale="log",
+        )
+
+        plotter.figure()
+        ax = plotter.drawer._axis
+        self.assertEqual(ax.get_xscale(), "function")
+        self.assertEqual(ax.get_yscale(), "log")
 
     @ddt.data(
         {str: ["0", "1", "2"], int: [0, 1, 2]},

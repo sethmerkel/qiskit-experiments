@@ -1,7 +1,7 @@
 # Contributing Guide
 
 To contribute to Qiskit Experiments, first read the overall [Qiskit project contributing
-guidelines](https://qiskit.org/documentation/contributing_to_qiskit.html). In addition
+guidelines](https://github.com/Qiskit/qiskit/blob/main/CONTRIBUTING.md). In addition
 to the general guidelines, the specific guidelines for contributing to Qiskit
 Experiments are documented below.
 
@@ -13,6 +13,7 @@ Contents:
     - [Pull request checklist](#pull-request-checklist)
     - [Testing your code](#testing-your-code)
       - [STDOUT/STDERR and logging capture](#stdoutstderr-and-logging-capture)
+      - [Other testing related settings](#other-testing-related-settings)
     - [Code style](#code-style)
     - [Changelog generation](#changelog-generation)
     - [Release notes](#release-notes)
@@ -37,7 +38,7 @@ experimentalist community.
 
 If there is an experiment you would like to see added, you can propose it by creating a
 [new experiment proposal
-issue](https://github.com/Qiskit/qiskit-experiments/issues/new?assignees=&labels=enhancement&template=NEW_EXPERIMENT.md&title=)
+issue](https://github.com/Qiskit-Extensions/qiskit-experiments/issues/new?assignees=&labels=enhancement&template=NEW_EXPERIMENT.md&title=)
 in GitHub. The issue template will ask you to fill in details about the experiment type,
 protocol, analysis, and implementation, which will give us the necessary information to
 decide whether the experiment is feasible to implement and useful to include in our
@@ -48,12 +49,12 @@ We use the following labels to help non-maintainers find issues best suited to t
 interests and experience level:
 
 * [good first
-  issue](https://github.com/Qiskit/qiskit-experiments/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
+  issue](https://github.com/Qiskit-Extensions/qiskit-experiments/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22)
   - these issues are typically the simplest available to work on, perfect for newcomers.
   They should already be fully scoped, with a clear approach outlined in the
   descriptions.
 * [help
-  wanted](https://github.com/Qiskit/qiskit-experiments/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22)
+  wanted](https://github.com/Qiskit-Extensions/qiskit-experiments/issues?q=is%3Aopen+is%3Aissue+label%3A%22help+wanted%22)
   - these issues are generally more complex than good first issues. They typically cover
   work that core maintainers don't currently have capacity to implement and may require
   more investigation/discussion. These are a great option for experienced contributors
@@ -72,6 +73,10 @@ When submitting a pull request for review, please ensure that:
 5. If your change has an end user facing impact (new feature, deprecation, removal,
    etc.), you've added or updated a reno release note for that change and tagged the PR
    for the changelog.
+6. If your code requires a change to dependencies, you've updated the corresponding
+   requirements file: `requirements.txt` for core dependencies,
+   `requirements-extras.txt` for dependencies for optional features, and `requirements-dev.txt`
+   for dependencies required for running tests and building documentation.
 
 The sections below go into more detail on the guidelines for each point.
 
@@ -100,27 +105,25 @@ https://stestr.readthedocs.io/en/stable/MANUAL.html#test-selection
 If you want to run a single test module, test class, or individual test method you can
 do this faster with the `-n`/`--no-discover` option. For example, to run a module:
 ```
-tox -- -n test.python.test_examples
+tox -epy310 -- -n test.framework.test_composite
 ```
-Or to run the same module by path:
 
-```
-tox -- -n test/python/test_examples.py
-```
 To run a class:
+```
+tox -epy310 -- -n test.framework.test_composite.TestCompositeExperimentData
+```
 
-```
-tox -- -n test.python.test_examples.TestPythonExamples
-```
 To run a method:
 ```
-tox -- -n test.python.test_examples.TestPythonExamples.test_all_examples
+tox -epy310 -- -n test.framework.test_composite.TestCompositeExperimentData.test_composite_save_load
 ```
+
+Note that tests will fail automatically if they do not finish execution within 60 seconds.
 
 #### STDOUT/STDERR and logging capture
 
-When running tests in parallel using `stestr` either via tox, the Makefile (`make
-test_ci`), or in CI, we set the env variable `QISKIT_TEST_CAPTURE_STREAMS`, which will
+When running tests in parallel using `stestr` either via tox
+or in CI, we set the env variable `QISKIT_TEST_CAPTURE_STREAMS`, which will
 capture any text written to stdout, stderr, and log messages and add them as attachments
 to the tests run so output can be associated with the test case it originated from.
 However, if you run tests with `stestr` outside of these mechanisms, by default the
@@ -131,6 +134,18 @@ be captured but **not** displayed in the test runners output. If you are using t
 stdlib unittest runner, a similar result can be accomplished by using the
 [`--buffer`](https://docs.python.org/3/library/unittest.html#command-line-options)
 option (e.g. `python -m unittest discover --buffer ./test/python`).
+
+#### Other testing related settings
+
+The test code defines some environment variables that may occasionally be useful to set:
+
++ `TEST_TIMEOUT`: An integer representing the maximum time a test can take
+  before it is considered a failure.
++ `QE_USE_TESTTOOLS`: Set this variable to `FALSE`, `0`, or `NO` to have the
+  tests use `unittest.TestCase` as the base class. Otherwise, the default is
+`testtools.TestCase` which is an extension of `unittest.TestCase`. In some
+situations, a developer may wish to use a workflow that is not compatible with
+the `testtools` extensions.
 
 ### Code style
 
@@ -270,7 +285,7 @@ included with the code in your PR.
 
 ##### Linking to issues
 
-If you need to link to an issue or another Github artifact as part of the release note,
+If you need to link to an issue or another GitHub artifact as part of the release note,
 this should be done using an inline link with the text being the issue number. For
 example you would write a release note with a link to issue 12345 as:
 
@@ -278,7 +293,7 @@ example you would write a release note with a link to issue 12345 as:
 fixes:
   - |
     Fixed a race condition in the function ``foo()``. Refer to
-    `#12345 <https://github.com/Qiskit/qiskit-experiments/issues/12345>` for more
+    `#12345 <https://github.com/Qiskit-Extensions/qiskit-experiments/issues/12345>` for more
     details.
 ```
 
@@ -299,11 +314,11 @@ tagged):
 At release time, ``reno report`` is used to generate the release notes for the release,
 and the output will be submitted as a pull request to the documentation repository's
 [release notes file](
-https://github.com/Qiskit/qiskit-experiments/blob/main/docs/release_notes.rst).
+https://github.com/Qiskit-Extensions/qiskit-experiments/blob/main/docs/release_notes.rst).
 
 ### Documentation
 
-The [Qiskit Experiments documentation](https://qiskit.org/documentation/experiments/) is
+The [Qiskit Experiments documentation](https://qiskit-extensions.github.io/qiskit-experiments) is
 rendered from `.rst` files as well as experiment and analysis class docstrings into HTML
 files.
 
@@ -311,7 +326,7 @@ files.
 
 Any change that would affect existing documentation, or a new feature that requires a
 documentation, should be updated correspondingly. Before updating, review the [existing
-documentation](https://qiskit.org/documentation/experiments) for their style and
+documentation](https://qiskit-extensions.github.io/qiskit-experiments) for their style and
 content, and read the [documentation guidelines](docs/GUIDELINES.md) for further
 details.
 
@@ -320,8 +335,8 @@ details.
 To check what the rendered html output of the API documentation, tutorials, and release
 notes will look like for the current state of the repo, run:
 
-    tox -edocs
-    
+    tox -e docs
+
 This will build all the documentation into `docs/_build/html`. The main page
 `index.html` will link to the relevant pages in the subdirectories, or you can navigate
 manually:
@@ -332,64 +347,99 @@ manually:
 * `apidocs/`:  Contains the API docs automatically compiled from module docstrings.
 * `release_notes.html`: Contains the release notes.
 
-If you encounter a build error involving `config-inited`, you need to be in the root of
+Sometimes Sphinx's caching can get in a bad state. First, try running `tox -e docs-clean`, which 
+will remove Sphinx's cache. If you are still having issues, try adding `-r` your command, 
+e.g. `tox -e docs -r`. `-r` tells Tox to reinstall the dependencies. If you encounter a build 
+error involving `config-inited`, you need to be in the root of
 the qiskit-experiments git repository then run `git remote add upstream
-https://github.com/Qiskit/qiskit-experiments` and `git fetch upstream` before building.
-Trying to rebuild docs over a document tree that's changed can also lead to problems;
-in this case, you should delete the `docs/stubs` and `docs/_build` directories before
-rebuilding.
+https://github.com/Qiskit-Extensions/qiskit-experiments` and `git fetch upstream` before building.
 
 There are a few other build options available:
 
-* `tox -edocs-minimal`: build documentation without executing Jupyter code cells
-* `tox -edocs-parallel`: do a full build with multiprocessing (may crash on Macs)
+* `tox -e docs-minimal`: build documentation without executing Jupyter code cells
+* `tox -e docs-parallel`: do a full build with multiprocessing (may crash on Macs)
 
 ### Deprecation policy
 
-Qiskit Experiments is part of Qiskit and, therefore, the [Qiskit Deprecation
-Policy](https://qiskit.org/documentation/deprecation_policy.html) fully applies here.
-Public-facing changes must come with a deprecation warning for at least three months or
-two version cycles before the old feature is removed. Deprecations can only happen on
-minor releases and not on patch releases.
+Any change to the existing package code that affects how the user interacts with the package
+should give the user clear instructions and advanced warning if the change is nontrivial.
+Qiskit Experiments's deprecation policy is based on [Qiskit's
+policy](https://github.com/Qiskit/qiskit/blob/1.0.0rc1/DEPRECATION.md) prior to its 1.0 release, but
+we impose less stringent requirements such that developers can iterate more quickly.
+Deprecations and feature removals can only happen on minor releases and not on patch releases.
+
+The deprecation policy depends on the significance of the user-facing change, which we have divided into
+three categories:
+
+A **core feature change** is one that affects how the framework functions, for example a
+change to `BaseExperiment`. The timeline for deprecating an existing core feature is as follows:
+
+* Minor release 1: An alternative path is provided. A `PendingDeprecationWarning` 
+  should be issued when the old path is used, indicating to users how to switch to
+  the new path and the release in which the old path will no longer be available. The
+  developer may choose to directly deprecate the feature and issue a `DeprecationWarning` instead,
+  in which case the release note should indicate the feature has been deprecated and how to switch
+  to the new path.
+* Minor release 2: The `PendingDeprecationWarning` becomes a `DeprecationWarning`, or the
+  `DeprecationWarning` remains in place. The release note should indicate the feature has
+  been deprecated and how to switch to the new path.
+* Minor release 3: The old feature is removed. The release note should indicate that the feature has
+  been removed and how to switch to the new path.
+
+If the three-release cycle takes fewer than three months, the feature removal must wait for more
+releases until three months has elapsed since the first issuing of the `PendingDeprecationWarning`
+or `DeprecationWarning`.
+
+A **non-core feature change** may be a change to a specific experiment class or modules such as the
+plotter. The timeline is shortened for such a change:
+
+* Minor release 1: An alternative path is provided. A `DeprecationWarning` should be issued
+  when the old path is used, indicating to users how to switch to the new path and the release
+  in which the old path will no longer be available.
+* Minor release 2: The old feature is removed. The release note should indicate that the feature has
+  been removed and how to switch to the new path.
+
+Lastly, a **minor, non-core change** could be a cosmetic change such as output file names or a
+change to helper functions that isn't directly used in the package codebase. These can be made in
+one release without a deprecation process as long as the change is clearly described in the
+release notes.
 
 #### Adding deprecation warnings
 
-We have a deprecation decorator for showing deprecation warnings. To
-deprecate a function, for example:
+We use the deprecation wrappers in [Qiskit
+Utilities](https://docs.quantum.ibm.com/api/qiskit/utils) to add warnings:
 
 ```python
 
-  from qiskit_experiments.warnings import deprecated_function
+  from qiskit.utils.deprecation import deprecate_func
 
-  @deprecated_function(last_version="0.3", msg="Use new_function instead.")
+  @deprecate_func(
+      since="0.5",
+      additional_msg="Use ``new_function`` instead.",
+      pending=True,
+      removal_timeline="after 0.7",
+      package_name="qiskit-experiments",
+  )
   def old_function(*args, **kwargs):
       pass
+  
   def new_function(*args, **kwargs):
       pass
 ```
 
-To deprecate a class:
-
-```python
-  from qiskit_experiments.warnings import deprecated_class
-
-  @deprecated_class(last_version="0.3", new_cls=NewCls)
-  class OldClass:
-      pass
-  class NewClass:
-      pass
-```
-
-This will inform the user which version of Qiskit Experiments will remove the deprecated
-class or function.
+Note that all warnings emitted by Qiskit Experiments, including pre-deprecation and deprecation
+warnings, will cause the CI to fail, but features up for deprecation should continue to be tested
+until their removal. For more information on how to use wrappers and test deprecated functionality,
+consult [Qiskit's
+policy](https://github.com/Qiskit/qiskit/blob/1.0.0rc1/DEPRECATION.md#issuing-deprecation-warnings).
 
 ### Development cycle
 
 The development cycle for Qiskit Experiments is all handled in the open using project
-boards in Github for project management. We use
-[milestones](https://github.com/Qiskit/qiskit-experiments/milestones) in Github to track
+boards in GitHub for project management. We use
+[milestones](https://github.com/Qiskit-Extensions/qiskit-experiments/milestones) in GitHub to track
 work for specific releases. Features or other changes that we want to include in a
-release will be tagged and discussed in Github.
+release will be tagged and discussed in GitHub.
 
 ### Branches
 

@@ -21,8 +21,8 @@ import numpy as np
 from ddt import ddt, idata, named_data, unpack
 
 from qiskit import QuantumCircuit
-from qiskit.providers.fake_provider import FakeVigoV2
 from qiskit_aer import AerSimulator
+from qiskit_ibm_runtime.fake_provider import FakeVigoV2
 
 from qiskit_experiments.library import ZZRamsey
 from qiskit_experiments.test.mock_iq_backend import MockIQBackend
@@ -118,9 +118,27 @@ class TestZZRamsey(QiskitExperimentsTestCase):
         exp = ZZRamsey((0, 1))
         loaded_exp = ZZRamsey.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)
 
     def test_roundtrip_serializable(self):
         """Test round trip JSON serialization"""
         exp = ZZRamsey((0, 1))
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        self.assertRoundTripSerializable(exp)
+
+    def test_circuit_roundtrip_serializable(self):
+        """Test round trip JSON serialization"""
+        # backend is needed for serialization of the metadata in the experiment.
+        backend = FakeVigoV2()
+        t_min = 0
+        t_max = 5e-6
+        num = 50
+
+        ramsey_min_max = ZZRamsey(
+            (0, 1),
+            backend,
+            min_delay=t_min,
+            max_delay=t_max,
+            num_delays=num,
+        )
+        # Check that the circuit are serializable
+        self.assertRoundTripSerializable(ramsey_min_max._transpiled_circuits())

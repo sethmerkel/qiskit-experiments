@@ -104,7 +104,7 @@ class DragCalAnalysis(curve.CurveAnalysis):
     def _generate_fit_guesses(
         self,
         user_opt: curve.FitOptions,
-        curve_data: curve.CurveData,
+        curve_data: curve.ScatterTable,
     ) -> Union[curve.FitOptions, List[curve.FitOptions]]:
         """Create algorithmic initial fit guess from analysis options and curve data.
 
@@ -116,9 +116,9 @@ class DragCalAnalysis(curve.CurveAnalysis):
             List of fit options that are passed to the fitter function.
         """
         # Use the highest-frequency curve to estimate the oscillation frequency.
-        max_rep_model_name = self._models[-1]._name
+        max_rep_model_name = self.model_names()[-1]
         max_rep = self.options.data_subfit_map[max_rep_model_name]["nrep"]
-        curve_data = curve_data.get_subset_of(max_rep_model_name)
+        curve_data = curve_data.filter(series=max_rep_model_name)
 
         x_data = curve_data.x
         min_beta, max_beta = min(x_data), max(x_data)
@@ -156,8 +156,7 @@ class DragCalAnalysis(curve.CurveAnalysis):
 
     def _run_curve_fit(
         self,
-        curve_data: curve.CurveData,
-        models: List[lmfit.Model],
+        curve_data: curve.ScatterTable,
     ) -> curve.CurveFitResult:
         r"""Perform curve fitting on given data collection and fit models.
 
@@ -187,13 +186,11 @@ class DragCalAnalysis(curve.CurveAnalysis):
 
         Args:
             curve_data: Formatted data to fit.
-            models: A list of LMFIT models that are used to build a cost function
-                for the LMFIT minimizer.
 
         Returns:
             The best fitting outcome with minimum reduced chi-squared value.
         """
-        fit_result = super()._run_curve_fit(curve_data, models)
+        fit_result = super()._run_curve_fit(curve_data)
 
         if fit_result and fit_result.params is not None:
             beta = fit_result.params["beta"]
@@ -207,7 +204,7 @@ class DragCalAnalysis(curve.CurveAnalysis):
         """Algorithmic criteria for whether the fit is good or bad.
 
         A good fit has:
-            - a reduced chi-squared lower than three,
+            - a reduced chi-squared lower than three and greater than zero,
             - a DRAG parameter value within the first period of the lowest number of repetitions,
             - an error on the drag beta smaller than the beta.
         """
@@ -215,7 +212,7 @@ class DragCalAnalysis(curve.CurveAnalysis):
         fit_freq = fit_data.ufloat_params["freq"]
 
         criteria = [
-            fit_data.reduced_chisq < 3,
+            0 < fit_data.reduced_chisq < 3,
             abs(fit_beta.nominal_value) < 1 / fit_freq.nominal_value / 2,
             curve.utils.is_error_not_significant(fit_beta),
         ]

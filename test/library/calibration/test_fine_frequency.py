@@ -17,7 +17,7 @@ import numpy as np
 from ddt import ddt, data
 
 from qiskit import pulse
-from qiskit.providers.fake_provider import FakeArmonkV2
+from qiskit_ibm_runtime.fake_provider import FakeArmonkV2
 
 from qiskit_experiments.library import (
     FineFrequency,
@@ -60,7 +60,7 @@ class TestFineFreqEndToEnd(QiskitExperimentsTestCase):
 
         expdata = freq_exp.run(shots=100)
         self.assertExperimentDone(expdata)
-        result = expdata.analysis_results(1)
+        result = expdata.analysis_results("d_theta")
         d_theta = result.value.n
         dt = BackendData(backend).dt
         d_freq = d_theta / (2 * np.pi * self.sx_duration * dt)
@@ -80,14 +80,14 @@ class TestFineFreqEndToEnd(QiskitExperimentsTestCase):
         fine_freq = FineFrequencyCal([0], self.cals, backend)
         armonk_freq = BackendData(FakeArmonkV2()).drive_freqs[0]
 
-        freq_before = self.cals.get_parameter_value(self.cals.__drive_freq_parameter__, 0)
+        freq_before = self.cals.get_parameter_value("drive_freq", 0)
 
         self.assertAlmostEqual(freq_before, armonk_freq)
 
         expdata = fine_freq.run()
         self.assertExperimentDone(expdata)
 
-        freq_after = self.cals.get_parameter_value(self.cals.__drive_freq_parameter__, 0)
+        freq_after = self.cals.get_parameter_value("drive_freq", 0)
 
         # Test equality up to 10kHz on a 100 kHz shift
         self.assertAlmostEqual(freq_after, armonk_freq + exp_helper.freq_shift, delta=1e4)
@@ -97,9 +97,14 @@ class TestFineFreqEndToEnd(QiskitExperimentsTestCase):
         exp = FineFrequency([0], 160)
         loaded_exp = FineFrequency.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)
 
     def test_roundtrip_serializable(self):
         """Test round trip JSON serialization"""
         exp = FineFrequency([0], 160)
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        self.assertRoundTripSerializable(exp)
+
+    def test_circuits_roundtrip_serializable(self):
+        """Test circuits serialization of the experiment."""
+        exp = FineFrequency([0], 160)
+        self.assertRoundTripSerializable(exp._transpiled_circuits())

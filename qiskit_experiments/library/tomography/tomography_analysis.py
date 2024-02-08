@@ -16,7 +16,6 @@ Quantum process tomography analysis
 
 from typing import List, Union, Callable
 from collections import defaultdict
-import warnings
 import numpy as np
 import scipy.linalg as la
 from uncertainties import ufloat
@@ -26,13 +25,11 @@ from qiskit.quantum_info.operators.base_operator import BaseOperator
 from qiskit.quantum_info.operators.channel.quantum_channel import QuantumChannel
 
 from qiskit_experiments.exceptions import AnalysisError
-from qiskit_experiments.framework import BaseAnalysis, AnalysisResultData, Options
+from qiskit_experiments.framework import BaseAnalysis, AnalysisResultData, Options, numpy_version
 from .fitters import (
     tomography_fitter_data,
     postprocess_fitter,
     linear_inversion,
-    scipy_linear_lstsq,
-    scipy_gaussian_lstsq,
     cvxpy_linear_lstsq,
     cvxpy_gaussian_lstsq,
 )
@@ -43,8 +40,6 @@ class TomographyAnalysis(BaseAnalysis):
 
     _builtin_fitters = {
         "linear_inversion": linear_inversion,
-        "scipy_linear_lstsq": scipy_linear_lstsq,
-        "scipy_gaussian_lstsq": scipy_gaussian_lstsq,
         "cvxpy_linear_lstsq": cvxpy_linear_lstsq,
         "cvxpy_gaussian_lstsq": cvxpy_gaussian_lstsq,
     }
@@ -102,24 +97,25 @@ class TomographyAnalysis(BaseAnalysis):
                 standard error calculation (Default: None).
             conditional_circuit_clbits (list[int]): Optional, the clbit indices in the
                 source circuit to be conditioned on when reconstructing the state.
-                Enabling this will return a list of reconstrated state components
+                Enabling this will return a list of reconstructed state components
                 conditional on the values of these clbit values. The integer value of the
                 conditioning clbits is stored in state analysis result extra field
                 `"conditional_circuit_outcome"`.
             conditional_measurement_indices (list[int]): Optional, indices of tomography
                 measurement qubits to used for conditional state reconstruction. Enabling
-                this will return a list of reconstrated state components conditioned on
+                this will return a list of reconstructed state components conditioned on
                 the remaining tomographic bases conditional on the basis index, and outcome
-                value for these measurements. The conditionl measurement basis index and
+                value for these measurements. The conditional measurement basis index and
                 integer value of the measurement outcome is stored in state analysis result
                 extra fields `"conditional_measurement_index"` and
                 `"conditional_measurement_outcome"` respectively.
             conditional_preparation_indices (list[int]): Optional, indices of tomography
                 preparation qubits to used for conditional state reconstruction. Enabling
-                this will return a list of reconstrated channel components conditioned on
+                this will return a list of reconstructed channel components conditioned on
                 the remaining tomographic bases conditional on the basis index. The
-                conditionl preparation basis index is stored in state analysis result
+                conditional preparation basis index is stored in state analysis result
                 extra fields `"conditional_preparation_index"`.
+            extra (Dict[str, Any]): Extra metadata dictionary attached to analysis results.
         """
         options = super()._default_options()
 
@@ -137,23 +133,8 @@ class TomographyAnalysis(BaseAnalysis):
         options.conditional_circuit_clbits = None
         options.conditional_measurement_indices = None
         options.conditional_preparation_indices = None
+        options.extra = {}
         return options
-
-    def set_options(self, **fields):
-        if fields.get("fitter", None) in [
-            "scipy_linear_lstsq",
-            "scipy_gaussian_lstsq",
-            scipy_linear_lstsq,
-            scipy_gaussian_lstsq,
-        ]:
-            warnings.warn(
-                "The scipy lstsq tomography fitters are deprecated as of 0.4 and will "
-                "be removed after the 0.5 release. Use the `linear_lstsq`, "
-                "`cvxpy_linear_lstsq`, or `cvxpy_gaussian_lstsq` fitter instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
-        super().set_options(**fields)
 
     @classmethod
     def _get_fitter(cls, fitter: Union[str, Callable]) -> Callable:
@@ -253,6 +234,9 @@ class TomographyAnalysis(BaseAnalysis):
 
         analysis_results = state_results + other_results
 
+        if self.options.extra:
+            for res in analysis_results:
+                res.extra.update(self.options.extra)
         return analysis_results, []
 
     def _fit_state_results(
@@ -326,13 +310,14 @@ class TomographyAnalysis(BaseAnalysis):
         prob_data = outcome_data / shot_data[None, :, None]
         bs_fidelities = []
         for _ in range(self.options.target_bootstrap_samples):
-            # Once python 3.7 support is dropped and minimum NumPy
-            # version can be set to 1.22 this can be replaced with
-            # `sampled_data = rng.multinomial(shot_data, probs)`
-            sampled_data = np.zeros_like(outcome_data)
-            for i in range(prob_data.shape[0]):
-                for j in range(prob_data.shape[1]):
-                    sampled_data[i, j] = rng.multinomial(shot_data[j], prob_data[i, j])
+            # TODO: remove conditional once numpy is pinned at 1.22 and above
+            if numpy_version() >= (1, 22):
+                sampled_data = rng.multinomial(shot_data, prob_data)
+            else:
+                sampled_data = np.zeros_like(outcome_data)
+                for i in range(prob_data.shape[0]):
+                    for j in range(prob_data.shape[1]):
+                        sampled_data[i, j] = rng.multinomial(shot_data[j], prob_data[i, j])
 
             try:
                 state_results = self._fit_state_results(

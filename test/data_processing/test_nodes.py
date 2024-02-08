@@ -43,7 +43,10 @@ class TestAveraging(BaseDataProcessorTest):
 
     def test_simple(self):
         """Simple test of averaging. Standard error of mean is generated."""
-        datum = unp.uarray([[1, 2], [3, 4], [5, 6]], np.full((3, 2), np.nan))
+        with np.errstate(invalid="ignore"):
+            # Setting std_devs to NaN will trigger floating point exceptions
+            # which we can ignore. See https://stackoverflow.com/q/75656026
+            datum = unp.uarray([[1, 2], [3, 4], [5, 6]], np.full((3, 2), np.nan))
 
         node = AverageData(axis=1)
         processed_data = node(data=datum)
@@ -85,16 +88,19 @@ class TestAveraging(BaseDataProcessorTest):
 
     def test_with_error_partly_non_error(self):
         """Compute error propagation. Some elements have no error."""
-        datum = unp.uarray(
-            [
-                [1, 2, 3, 4, 5, 6],
-                [1, 2, 3, 4, 5, 6],
-            ],
-            [
-                [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
-                [np.nan, 0.2, 0.3, 0.4, 0.5, 0.6],
-            ],
-        )
+        with np.errstate(invalid="ignore"):
+            # Setting std_devs to NaN will trigger floating point exceptions
+            # which we can ignore. See https://stackoverflow.com/q/75656026
+            datum = unp.uarray(
+                [
+                    [1, 2, 3, 4, 5, 6],
+                    [1, 2, 3, 4, 5, 6],
+                ],
+                [
+                    [0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+                    [np.nan, 0.2, 0.3, 0.4, 0.5, 0.6],
+                ],
+            )
 
         node = AverageData(axis=1)
         processed_data = node(data=datum)
@@ -130,7 +136,10 @@ class TestAveraging(BaseDataProcessorTest):
         )
         iq_std = np.full_like(iq_data, np.nan)
 
-        self.create_experiment_data(unp.uarray(iq_data, iq_std), single_shot=True)
+        with np.errstate(invalid="ignore"):
+            # Setting std_devs to NaN will trigger floating point exceptions
+            # which we can ignore. See https://stackoverflow.com/q/75656026
+            self.create_experiment_data(unp.uarray(iq_data, iq_std), single_shot=True)
 
         avg_iq = AverageData(axis=0)
         processed_data = avg_iq(data=np.asarray(self.iq_experiment.data(0)["memory"]))
@@ -154,7 +163,7 @@ class TestAveraging(BaseDataProcessorTest):
     def test_json(self):
         """Check if the node is serializable."""
         node = AverageData(axis=3)
-        self.assertRoundTripSerializable(node, check_func=self.json_equiv)
+        self.assertRoundTripSerializable(node)
 
 
 class TestToAbs(QiskitExperimentsTestCase):
@@ -188,11 +197,14 @@ class TestToAbs(QiskitExperimentsTestCase):
             decimal=-8,
         )
 
-        np.testing.assert_array_almost_equal(
-            unp.std_devs(processed),
-            unp.std_devs(expected),
-            decimal=-8,
-        )
+        with np.errstate(invalid="ignore"):
+            # Setting std_devs to NaN will trigger floating point exceptions
+            # which we can ignore. See https://stackoverflow.com/q/75656026
+            np.testing.assert_array_almost_equal(
+                unp.std_devs(processed),
+                unp.std_devs(expected),
+                decimal=-8,
+            )
 
 
 class TestNormalize(QiskitExperimentsTestCase):
@@ -228,7 +240,7 @@ class TestNormalize(QiskitExperimentsTestCase):
     def test_json(self):
         """Check if the node is serializable."""
         node = MinMaxNormalize()
-        self.assertRoundTripSerializable(node, check_func=self.json_equiv)
+        self.assertRoundTripSerializable(node)
 
 
 class TestSVD(BaseDataProcessorTest):
@@ -401,7 +413,7 @@ class TestSVD(BaseDataProcessorTest):
     def test_json(self):
         """Check if the node is serializable."""
         node = SVD()
-        self.assertRoundTripSerializable(node, check_func=self.json_equiv)
+        self.assertRoundTripSerializable(node)
 
     def test_json_trained(self):
         """Check if the trained node is serializable."""
@@ -409,7 +421,7 @@ class TestSVD(BaseDataProcessorTest):
         node.set_parameters(
             main_axes=np.array([[1.0, 2.0]]), scales=[1.0], i_means=[2.0], q_means=[3.0]
         )
-        self.assertRoundTripSerializable(node, check_func=self.json_equiv)
+        self.assertRoundTripSerializable(node)
 
         loaded_node = json.loads(json.dumps(node, cls=ExperimentEncoder), cls=ExperimentDecoder)
         self.assertTrue(loaded_node.is_trained)
@@ -643,7 +655,7 @@ class TestMarginalize(QiskitExperimentsTestCase):
     def test_json(self):
         """Check if the node is serializable."""
         node = MarginalizeCounts(qubits_to_keep={0, 1})
-        self.assertRoundTripSerializable(node, check_func=self.json_equiv)
+        self.assertRoundTripSerializable(node)
 
 
 class TestProbability(QiskitExperimentsTestCase):
@@ -675,7 +687,7 @@ class TestProbability(QiskitExperimentsTestCase):
     def test_json(self):
         """Check if the node is serializable."""
         node = Probability(outcome="00", alpha_prior=0.2)
-        self.assertRoundTripSerializable(node, check_func=self.json_equiv)
+        self.assertRoundTripSerializable(node)
 
 
 class TestRestless(QiskitExperimentsTestCase):

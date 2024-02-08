@@ -22,7 +22,6 @@ from qiskit.providers.backend import Backend
 
 from qiskit_experiments.framework import BackendTiming, BaseExperiment, Options
 from qiskit_experiments.library.characterization.analysis.t2hahn_analysis import T2HahnAnalysis
-from qiskit_experiments.warnings import qubit_deprecate
 
 
 class T2Hahn(BaseExperiment):
@@ -78,7 +77,6 @@ class T2Hahn(BaseExperiment):
         options.num_echoes = 1
         return options
 
-    @qubit_deprecate()
     def __init__(
         self,
         physical_qubits: Sequence[int],
@@ -87,18 +85,18 @@ class T2Hahn(BaseExperiment):
         backend: Optional[Backend] = None,
     ):
         """
-        Initialize the T2 - Hahn Echo class
+        Initialize the T2 - Hahn Echo class.
 
         Args:
             physical_qubits: a single-element sequence containing the qubit whose T2 is to be
-                estimated
+                estimated.
             delays: Total delay times of the experiments.
             backend: Optional, the backend to run the experiment on.
             num_echoes: The number of echoes to preform.
             backend: Optional, the backend to run the experiment on.
 
-         Raises:
-             QiskitError : Error for invalid input.
+        Raises:
+            QiskitError : Error for invalid input.
         """
         # Initialize base experiment
         super().__init__(physical_qubits, analysis=T2HahnAnalysis(), backend=backend)
@@ -133,18 +131,12 @@ class T2Hahn(BaseExperiment):
         """
         timing = BackendTiming(self.backend)
 
-        template = QuantumCircuit(1, 1)
-        template.metadata = {
-            "experiment_type": self._type,
-            "qubit": self.physical_qubits[0],
-            "unit": "s",
-        }
-
         delay_param = Parameter("delay")
 
         num_echoes = self.experiment_options.num_echoes
 
         # First X rotation in 90 degrees
+        template = QuantumCircuit(1, 1)
         template.rx(np.pi / 2, 0)  # Brings the qubit to the X Axis
         if num_echoes == 0:
             # if number of echoes is 0 then just apply the delay gate
@@ -176,7 +168,7 @@ class T2Hahn(BaseExperiment):
             assigned = template.assign_parameters(
                 {delay_param: timing.round_delay(time=single_delay)}, inplace=False
             )
-            assigned.metadata["xval"] = total_delay
+            assigned.metadata = {"xval": total_delay}
             circuits.append(assigned)
 
         return circuits

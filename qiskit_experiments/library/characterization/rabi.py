@@ -25,7 +25,6 @@ from qiskit.exceptions import QiskitError
 from qiskit_experiments.framework import BaseExperiment, Options
 from qiskit_experiments.framework.restless_mixin import RestlessMixin
 from qiskit_experiments.curve_analysis import ParameterRepr, OscillationAnalysis
-from qiskit_experiments.warnings import qubit_deprecate
 
 
 class Rabi(BaseExperiment, RestlessMixin):
@@ -51,8 +50,8 @@ class Rabi(BaseExperiment, RestlessMixin):
     # section: manual
         :ref:`Rabi Calibration`
 
-        See also `Qiskit Textbook <https://qiskit.org/textbook/ch-quantum-hardware/\
-        calibrating-qubits-pulse.html>`_
+        See also the `Qiskit Textbook
+        <https://github.com/Qiskit/textbook/blob/main/notebooks/quantum-hardware-pulses/calibrating-qubits-pulse.ipynb>`_
         for the pulse level programming of a Rabi experiment.
 
     # section: analysis_ref
@@ -89,7 +88,6 @@ class Rabi(BaseExperiment, RestlessMixin):
 
         return options
 
-    @qubit_deprecate()
     def __init__(
         self,
         physical_qubits: Sequence[int],
@@ -161,15 +159,11 @@ class Rabi(BaseExperiment, RestlessMixin):
         # Create the circuits to run
         circs = []
         for amp in self.experiment_options.amplitudes:
-            amp = np.round(amp, decimals=6)
+            # casting is needed because for amplitude '0', np.round method return datatype of int32
+            # which isn't serializable in the metadata.
+            amp = float(np.round(amp, decimals=6))
             assigned_circ = circuit.assign_parameters({param: amp}, inplace=False)
-            assigned_circ.metadata = {
-                "experiment_type": self._type,
-                "qubits": self.physical_qubits,
-                "xval": amp,
-                "unit": "arb. unit",
-                "amplitude": amp,
-            }
+            assigned_circ.metadata = {"xval": amp}
 
             circs.append(assigned_circ)
 
@@ -187,7 +181,7 @@ class Rabi(BaseExperiment, RestlessMixin):
 
 class EFRabi(Rabi):
     r"""An experiment that scans the amplitude of a pulse inducing rotations on the
-     :math:`|1\rangle` <-> :math:`|2\rangle` transition.
+    :math:`|1\rangle` <-> :math:`|2\rangle` transition.
 
     # section: overview
 

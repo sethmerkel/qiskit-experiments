@@ -39,6 +39,7 @@ Data Classes
 .. autosummary::
     :toctree: ../stubs/
 
+    ScatterTable
     SeriesDef
     CurveData
     CurveFitResult
@@ -81,9 +82,6 @@ Fit Functions
     fit_function.sqrt_lorentzian
     fit_function.sin
     fit_function.sin_decay
-    fit_function.bloch_oscillation_x
-    fit_function.bloch_oscillation_y
-    fit_function.bloch_oscillation_z
 
 Initial Guess Estimators
 ========================
@@ -120,6 +118,7 @@ Utilities
 from .base_curve_analysis import BaseCurveAnalysis
 from .curve_analysis import CurveAnalysis
 from .composite_curve_analysis import CompositeCurveAnalysis
+from .scatter_table import ScatterTable
 from .curve_data import (
     CurveData,
     CurveFitResult,
@@ -129,8 +128,6 @@ from .curve_data import (
     SeriesDef,
 )
 from .curve_fit import (
-    curve_fit,
-    multi_curve_fit,
     process_curve_data,
     process_multi_curve_data,
 )

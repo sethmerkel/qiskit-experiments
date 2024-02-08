@@ -15,6 +15,7 @@ Batch Experiment class.
 
 from typing import List, Optional, Dict
 from collections import OrderedDict, defaultdict
+import warnings
 
 from qiskit import QuantumCircuit
 from qiskit.providers import Job, Backend, Options
@@ -46,8 +47,9 @@ class BatchExperiment(CompositeExperiment):
         self,
         experiments: List[BaseExperiment],
         backend: Optional[Backend] = None,
-        flatten_results: bool = False,
+        flatten_results: bool = None,
         analysis: Optional[CompositeAnalysis] = None,
+        experiment_type: Optional[str] = None,
     ):
         """Initialize a batch experiment.
 
@@ -64,6 +66,16 @@ class BatchExperiment(CompositeExperiment):
                       provided this will be initialized automatically from the
                       supplied experiments.
         """
+        if flatten_results is None:
+            # Backward compatibility for 0.6
+            # This if-clause will be removed in 0.7 and flatten_result=True is set in arguments.
+            warnings.warn(
+                "Default value of flatten_results will be turned to True in Qiskit Experiments 0.7. "
+                "If you want child experiment data for each subset experiment, "
+                "set 'flatten_results=False' explicitly.",
+                DeprecationWarning,
+            )
+            flatten_results = False
 
         # Generate qubit map
         self._qubit_map = OrderedDict()
@@ -75,7 +87,12 @@ class BatchExperiment(CompositeExperiment):
                     logical_qubit += 1
         qubits = tuple(self._qubit_map.keys())
         super().__init__(
-            experiments, qubits, backend=backend, analysis=analysis, flatten_results=flatten_results
+            experiments,
+            qubits,
+            backend=backend,
+            analysis=analysis,
+            flatten_results=flatten_results,
+            experiment_type=experiment_type,
         )
 
     def circuits(self):
@@ -96,7 +113,7 @@ class BatchExperiment(CompositeExperiment):
 
             if isinstance(expr, BatchExperiment):
                 # Batch experiments don't contain their own native circuits.
-                # If to_trasnpile is True then the circuits will be transpiled at the non-batch
+                # If to_transpile is True then the circuits will be transpiled at the non-batch
                 # experiments.
                 # Fetch the circuits from the sub-experiments.
                 expr_circuits = expr._batch_circuits(to_transpile)

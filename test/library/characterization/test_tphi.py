@@ -47,8 +47,8 @@ class TestTphi(QiskitExperimentsTestCase):
         backend = NoisyDelayAerBackend([t1], [t2ramsey])
         expdata = exp.run(backend=backend, seed_simulator=1)
         self.assertExperimentDone(expdata)
-        self.assertRoundTripSerializable(expdata, check_func=self.experiment_data_equiv)
-        self.assertRoundTripPickle(expdata, check_func=self.experiment_data_equiv)
+        self.assertRoundTripSerializable(expdata)
+        self.assertRoundTripPickle(expdata)
         result = expdata.analysis_results("T_phi")
         estimated_tphi = 1 / ((1 / t2ramsey) - (1 / (2 * t1)))
         self.assertAlmostEqual(
@@ -83,11 +83,12 @@ class TestTphi(QiskitExperimentsTestCase):
         x_values_t1 = []
         x_values_t2 = []
         for datum in expdata.data():
-            comp_meta = datum["metadata"]["composite_metadata"][0]
-            if comp_meta["experiment_type"] == "T1":
-                x_values_t1.append(comp_meta["xval"])
+            metadata = datum["metadata"]
+            xval = metadata["composite_metadata"][0]["xval"]
+            if metadata["composite_index"][0] == 0:
+                x_values_t1.append(xval)
             else:
-                x_values_t2.append(comp_meta["xval"])
+                x_values_t2.append(xval)
         self.assertListEqual(x_values_t1, delays_t1, "Incorrect delays_t1")
         self.assertListEqual(x_values_t2, delays_t2, "Incorrect delays_t2")
 
@@ -104,15 +105,14 @@ class TestTphi(QiskitExperimentsTestCase):
         # Extract x values from metadata
         x_values_t1 = []
         x_values_t2 = []
-        new_freq_t2 = None
+        new_freq_t2 = expdata.metadata["component_metadata"][1]["osc_freq"]
         for datum in expdata.data():
-            comp_meta = datum["metadata"]["composite_metadata"][0]
-            if comp_meta["experiment_type"] == "T1":
-                x_values_t1.append(comp_meta["xval"])
+            metadata = datum["metadata"]
+            xval = metadata["composite_metadata"][0]["xval"]
+            if metadata["composite_index"][0] == 0:
+                x_values_t1.append(xval)
             else:
-                x_values_t2.append(comp_meta["xval"])
-                if new_freq_t2 is None:
-                    new_freq_t2 = comp_meta["osc_freq"]
+                x_values_t2.append(xval)
         self.assertListEqual(x_values_t1, new_delays_t1, "Incorrect delays_t1")
         self.assertListEqual(x_values_t2, new_delays_t2, "Incorrect delays_t2")
         self.assertEqual(new_freq_t2, new_osc_freq, "Option osc_freq not set correctly")
@@ -138,11 +138,20 @@ class TestTphi(QiskitExperimentsTestCase):
     def test_roundtrip_serializable(self):
         """Test round trip JSON serialization"""
         exp = Tphi([0], [1], [2])
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        self.assertRoundTripSerializable(exp)
         exp = Tphi([0], [1], [2], "hahn", 3)
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        self.assertRoundTripSerializable(exp)
         exp = Tphi([0], [1], [2], "ramsey", 0)
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        self.assertRoundTripSerializable(exp)
+
+    def test_circuits_roundtrip_serializable(self):
+        """Test round trip JSON serialization"""
+        exp = Tphi([0], [1], [2])
+        self.assertRoundTripSerializable(exp._transpiled_circuits())
+        exp = Tphi([0], [1], [2], "hahn", 3)
+        self.assertRoundTripSerializable(exp._transpiled_circuits())
+        exp = Tphi([0], [1], [2], "ramsey", 0)
+        self.assertRoundTripSerializable(exp._transpiled_circuits())
 
     def test_analysis_config(self):
         """Test converting analysis to and from config works"""

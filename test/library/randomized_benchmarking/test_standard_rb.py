@@ -19,10 +19,10 @@ from ddt import ddt, data, unpack
 
 from qiskit.circuit.library import SXGate
 from qiskit.exceptions import QiskitError
-from qiskit.providers.fake_provider import FakeManilaV2
 from qiskit.pulse import Schedule, InstructionScheduleMap
 from qiskit_aer import AerSimulator
 from qiskit_aer.noise import NoiseModel, depolarizing_error
+from qiskit_ibm_runtime.fake_provider import FakeManilaV2
 from qiskit_experiments.framework.composite import ParallelExperiment
 from qiskit_experiments.library import randomized_benchmarking as rb
 
@@ -53,12 +53,17 @@ class TestStandardRB(QiskitExperimentsTestCase, RBTestMixin):
         exp = rb.StandardRB(physical_qubits=(0,), lengths=[10, 20, 30], seed=123)
         loaded_exp = rb.StandardRB.from_config(exp.config())
         self.assertNotEqual(exp, loaded_exp)
-        self.assertTrue(self.json_equiv(exp, loaded_exp))
+        self.assertEqualExtended(exp, loaded_exp)
 
     def test_roundtrip_serializable(self):
         """Test round trip JSON serialization"""
-        exp = rb.StandardRB(physical_qubits=(0,), lengths=[10, 20, 30], seed=123)
-        self.assertRoundTripSerializable(exp, self.json_equiv)
+        exp = rb.StandardRB(physical_qubits=(0,), lengths=[1, 3], seed=123)
+        self.assertRoundTripSerializable(exp)
+
+    def test_circuit_roundtrip_serializable(self):
+        """Test circuits round trip JSON serialization"""
+        exp = rb.StandardRB(physical_qubits=(0,), lengths=[1, 3], seed=123)
+        self.assertRoundTripSerializable(exp._transpiled_circuits())
 
     def test_analysis_config(self):
         """ "Test converting analysis to and from config works"""
@@ -289,7 +294,7 @@ class TestRunStandardRB(QiskitExperimentsTestCase, RBTestMixin):
         self.assertAlmostEqual(epc.value.n, epc_expected, delta=0.3 * epc_expected)
 
     def test_three_qubit(self):
-        """Test two qubit RB. Use default basis gates."""
+        """Test three qubit RB. Use default basis gates."""
         exp = rb.StandardRB(
             physical_qubits=(0, 1, 2),
             lengths=list(range(1, 30, 3)),
@@ -367,7 +372,7 @@ class TestRunStandardRB(QiskitExperimentsTestCase, RBTestMixin):
         This is a special case that fit outcome is very sensitive to initial guess.
         Perhaps generated initial guess is close to a local minima.
         """
-        from qiskit.providers.fake_provider import FakeVigoV2
+        from qiskit_ibm_runtime.fake_provider import FakeVigoV2
 
         backend = FakeVigoV2()
         backend.set_options(seed_simulator=123)
@@ -387,7 +392,7 @@ class TestRunStandardRB(QiskitExperimentsTestCase, RBTestMixin):
 
         expdata = exp.run()
         self.assertExperimentDone(expdata)
-        overview = expdata.analysis_results(0).value
+        overview = expdata.artifacts("fit_summary").data
         # This yields bad fit due to poor data points, but still fit is not completely off.
         self.assertLess(overview.reduced_chisq, 14)
 
@@ -402,8 +407,8 @@ class TestRunStandardRB(QiskitExperimentsTestCase, RBTestMixin):
         exp.set_transpile_options(**self.transpiler_options)
         expdata = exp.run()
         self.assertExperimentDone(expdata)
-        self.assertRoundTripSerializable(expdata, check_func=self.experiment_data_equiv)
-        self.assertRoundTripPickle(expdata, check_func=self.experiment_data_equiv)
+        self.assertRoundTripSerializable(expdata)
+        self.assertRoundTripPickle(expdata)
 
     def test_single_qubit_parallel(self):
         """Test single qubit RB in parallel."""
@@ -417,7 +422,7 @@ class TestRunStandardRB(QiskitExperimentsTestCase, RBTestMixin):
             exp.analysis.set_options(gate_error_ratio=None, plot_raw_data=False)
             exps.append(exp)
 
-        par_exp = ParallelExperiment(exps)
+        par_exp = ParallelExperiment(exps, flatten_results=False)
         par_exp.set_transpile_options(**self.transpiler_options)
 
         par_expdata = par_exp.run(backend=self.backend)
@@ -439,7 +444,7 @@ class TestRunStandardRB(QiskitExperimentsTestCase, RBTestMixin):
             exp.analysis.set_options(gate_error_ratio=None, plot_raw_data=False)
             exps.append(exp)
 
-        par_exp = ParallelExperiment(exps)
+        par_exp = ParallelExperiment(exps, flatten_results=False)
         par_exp.set_transpile_options(**self.transpiler_options)
 
         par_expdata = par_exp.run(backend=self.backend)

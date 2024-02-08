@@ -16,7 +16,6 @@ Sphinx documentation builder.
 
 import os
 import sys
-import subprocess
 import datetime
 
 # -- Path setup --------------------------------------------------------------
@@ -36,10 +35,12 @@ os.environ["QISKIT_DOCS"] = "TRUE"
 
 # -- Project information -----------------------------------------------------
 # The short X.Y version
-version = "0.5"
+version = os.getenv("VERSION_STRING", "0.6")
+
 # The full version, including alpha/beta/rc tags
-release = "0.5.4"
-project = f"Qiskit Experiments {version}"
+release = os.getenv("RELEASE_STRING", "0.6.0")
+
+project = "Qiskit Experiments"
 copyright = f"2021-{datetime.date.today().year}, Qiskit Development Team"  # pylint: disable=redefined-builtin
 author = "Qiskit Development Team"
 
@@ -47,15 +48,14 @@ author = "Qiskit Development Team"
 # -- General configuration ---------------------------------------------------
 
 extensions = [
+    "qiskit_sphinx_theme",
     "sphinx.ext.napoleon",
     "sphinx.ext.autodoc",
     "sphinx.ext.autosummary",
     "sphinx.ext.mathjax",
-    "sphinx.ext.viewcode",
     "sphinx.ext.extlinks",
     "sphinx_copybutton",
     "jupyter_sphinx",
-    "sphinx_autodoc_typehints",
     "reno.sphinxext",
     "sphinx_design",
     "sphinx.ext.intersphinx",
@@ -65,11 +65,22 @@ extensions = [
     "autodoc_analysis",
     "autodoc_visualization",
     "jupyter_execute_custom",
+    "sphinx_remove_toctrees",
 ]
+
+if os.getenv("PROD_BUILD", None):
+    # Turn on view code source for production build
+    extensions.append("sphinx.ext.viewcode")
+else:
+    # Remove stubs from the toctree for non-prod build because the full build is slow
+    remove_from_toctrees = ["stubs/*"]
+
 
 html_static_path = ["_static"]
 templates_path = ["_templates"]
-html_css_files = ["gallery.css"]
+# Manually add the gallery CSS file for now
+# TODO: Figure out why the styling is not working by default
+html_css_files = ["nbsphinx-gallery.css", "dataframe.css"]
 
 nbsphinx_timeout = 360
 nbsphinx_execute = os.getenv("QISKIT_DOCS_BUILD_TUTORIALS", "never")
@@ -89,11 +100,20 @@ nbsphinx_thumbnails = {
     "manuals/characterization/t2ramsey": "_images/t2ramsey_4_0.png",
     "manuals/characterization/tphi": "_images/tphi_5_1.png",
     "manuals/characterization/t2hahn": "_images/t2hahn_5_0.png",
+    "manuals/characterization/stark_experiment": "_images/stark_experiment_1_0.png",
+    "**": "_static/images/logo.png",
 }
 
 # Add `data keys` and `style parameters` alias. Needed for `expected_*_data_keys` methods in
 # visualization module and `default_style` method in `PlotStyle` respectively.
 napoleon_custom_sections = [("data keys", "params_style"), ("style parameters", "params_style")]
+
+# Move type hints from signatures to the parameter descriptions (except in overload cases, where
+# that's not possible).
+autodoc_typehints = "description"
+# Only add type hints from signature to description body if the parameter has documentation.  The
+# return type is always added to the description (if in the signature).
+autodoc_typehints_description_target = "documented_params"
 
 autosummary_generate = True
 
@@ -129,38 +149,31 @@ add_module_names = False
 # package. Works only for the HTML builder currently.
 modindex_common_prefix = ["qiskit_experiments."]
 
-# -- Configuration for extlinks extension ------------------------------------
-# Refer to https://www.sphinx-doc.org/en/master/usage/extensions/extlinks.html
-
-
 # -- Options for HTML output -------------------------------------------------
 
-# The theme to use for HTML and HTML Help pages.  See the documentation for
-# a list of builtin themes.
-#
-html_theme = "qiskit_sphinx_theme"  # use the theme in subdir 'theme'
+html_theme = "qiskit-ecosystem"
 
 html_context = {
     "analytics_enabled": True,
     "expandable_sidebar": True,
 }
 
+html_title = f"{project} {release}"
+
+docs_url_prefix = "qiskit-experiments"
+
 html_last_updated_fmt = "%Y/%m/%d"
-
-html_theme_options = {
-    "logo_only": True,
-    "display_version": True,
-    "prev_next_buttons_location": "bottom",
-    "style_external_links": True,
-}
-
 
 autoclass_content = "both"
 intersphinx_mapping = {
     "matplotlib": ("https://matplotlib.org/stable/", None),
-    "qiskit": ("https://qiskit.org/documentation/", None),
+    "qiskit": ("https://docs.quantum.ibm.com/api/qiskit/", None),
     "uncertainties": ("https://pythonhosted.org/uncertainties", None),
-    "qiskit_ibm_provider": ("https://qiskit.org/documentation/partners/qiskit_ibm_provider", None),
+    "pandas": ("http://pandas.pydata.org/docs/", None),
+    "qiskit_aer": ("https://qiskit.org/ecosystem/aer", None),
+    "qiskit_dynamics": ("https://qiskit.org/ecosystem/dynamics/", None),
+    "qiskit_ibm_runtime": ("https://docs.quantum.ibm.com/api/qiskit-ibm-runtime/", None),
+    "qiskit_ibm_provider": ("https://docs.quantum.ibm.com/api/qiskit-ibm-provider/", None),
 }
 
 
@@ -178,9 +191,7 @@ if os.getenv("EXPERIMENTS_DEV_DOCS", None):
 def _get_versions(app, config):
     context = config.html_context
     start_version = (0, 5, 0)
-    proc = subprocess.run(["git", "describe", "--abbrev=0"], capture_output=True)
-    proc.check_returncode()
-    current_version = proc.stdout.decode("utf8")
+    current_version = release
     current_version_info = current_version.split(".")
     if current_version_info[0] == "0":
         version_list = ["0.%s" % x for x in range(start_version[1], int(current_version_info[1]))]
@@ -225,6 +236,11 @@ def maybe_skip_member(app, what, name, obj, skip, options):
         "filter_kwargs",
         "fit_func",
         "signature",
+        "artifact_id",
+        "artifact_data",
+        "device_components",
+        "created_time",
+        "data",
     ]
     skip_members = [
         ParameterRepr.repr,

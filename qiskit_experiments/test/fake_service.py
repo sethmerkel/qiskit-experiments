@@ -12,54 +12,20 @@
 
 """Fake service class for tests."""
 
-from typing import Optional, List, Dict, Type, Any, Union, Tuple, Callable
-import functools
+from typing import Optional, List, Dict, Type, Any, Union, Tuple
 import json
 from datetime import datetime, timedelta
 import uuid
 
-from qiskit_experiments.test.fake_backend import FakeBackend
+import pandas as pd
+from qiskit_ibm_experiment import AnalysisResultData
 
+from qiskit_experiments.test.fake_backend import FakeBackend
 from qiskit_experiments.database_service.device_component import DeviceComponent
 from qiskit_experiments.database_service.exceptions import (
     ExperimentEntryExists,
     ExperimentEntryNotFound,
 )
-
-
-# Check if PANDAS package is installed
-try:
-    import pandas as pd
-
-    HAS_PANDAS = True
-except ImportError:
-    pd = None
-    HAS_PANDAS = False
-
-
-def requires_pandas(func: Callable) -> Callable:
-    """Function decorator for functions requiring Pandas.
-
-    Args:
-        func: a function requiring Pandas.
-
-    Returns:
-        The decorated function.
-
-    Raises:
-        QiskitError: If Pandas is not installed.
-    """
-
-    @functools.wraps(func)
-    def decorated_func(*args, **kwargs):
-        if not HAS_PANDAS:
-            raise ImportError(
-                f"The pandas python package is required for {func}."
-                "You can install it with 'pip install pandas'."
-            )
-        return func(*args, **kwargs)
-
-    return decorated_func
 
 
 class FakeService:
@@ -70,7 +36,6 @@ class FakeService:
     It implements most of the methods of `DatabaseService`.
     """
 
-    @requires_pandas
     def __init__(self):
         self.exps = pd.DataFrame(
             columns=[
@@ -101,7 +66,6 @@ class FakeService:
                 "result_id",
                 "chisq",
                 "creation_datetime",
-                "service",
                 "backend_name",
             ]
         )
@@ -147,33 +111,38 @@ class FakeService:
         # backend - the query methods `experiment` and `experiments` are supposed to return an
         #    an instantiated backend object, and not only the backend name. We assume that the fake
         #    service works with the fake backend (class FakeBackend).
-        self.exps = pd.concat(
+        row = pd.DataFrame(
             [
-                self.exps,
-                pd.DataFrame(
-                    [
-                        {
-                            "experiment_type": experiment_type,
-                            "experiment_id": experiment_id,
-                            "parent_id": parent_id,
-                            "backend_name": backend_name,
-                            "metadata": metadata,
-                            "job_ids": job_ids,
-                            "tags": tags,
-                            "notes": notes,
-                            "share_level": kwargs.get("share_level", None),
-                            "device_components": [],
-                            "start_datetime": datetime(2022, 1, 1)
-                            + timedelta(hours=len(self.exps)),
-                            "figure_names": [],
-                            "backend": FakeBackend(backend_name=backend_name),
-                        }
-                    ],
-                    columns=self.exps.columns,
-                ),
+                {
+                    "experiment_type": experiment_type,
+                    "experiment_id": experiment_id,
+                    "parent_id": parent_id,
+                    "backend_name": backend_name,
+                    "metadata": metadata,
+                    "job_ids": job_ids,
+                    "tags": tags,
+                    "notes": notes,
+                    "share_level": kwargs.get("share_level", None),
+                    "device_components": [],
+                    "start_datetime": datetime(2022, 1, 1) + timedelta(hours=len(self.exps)),
+                    "figure_names": [],
+                    "backend": FakeBackend(backend_name=backend_name),
+                }
             ],
-            ignore_index=True,
+            columns=self.exps.columns,
         )
+        if len(self.exps) > 0:
+            self.exps = pd.concat(
+                [
+                    self.exps,
+                    row,
+                ],
+                ignore_index=True,
+            )
+        else:
+            # Avoid the FutureWarning on concatenating empty DataFrames
+            # introduced in https://github.com/pandas-dev/pandas/pull/52532
+            self.exps = row
 
         return experiment_id
 
@@ -329,35 +298,39 @@ class FakeService:
         #    `IBMExperimentService.create_analysis_result`. Since `DbExperimentData` does not set it
         #    via kwargs (as it does with chisq), the user cannot control the time and the service
         #    alone decides about it. Here we've chosen to set the start date of the experiment.
-        self.results = pd.concat(
+        row = pd.DataFrame(
             [
-                self.results,
-                pd.DataFrame(
-                    [
-                        {
-                            "result_data": result_data,
-                            "result_id": result_id,
-                            "result_type": result_type,
-                            "device_components": device_components,
-                            "experiment_id": experiment_id,
-                            "quality": quality,
-                            "verified": verified,
-                            "tags": tags,
-                            "backend_name": self.exps.loc[self.exps.experiment_id == experiment_id]
-                            .iloc[0]
-                            .backend_name,
-                            "chisq": kwargs.get("chisq", None),
-                            "creation_datetime": self.exps.loc[
-                                self.exps.experiment_id == experiment_id
-                            ]
-                            .iloc[0]
-                            .start_datetime,
-                        }
-                    ]
-                ),
-            ],
-            ignore_index=True,
+                {
+                    "result_data": result_data,
+                    "result_id": result_id,
+                    "result_type": result_type,
+                    "device_components": device_components,
+                    "experiment_id": experiment_id,
+                    "quality": quality,
+                    "verified": verified,
+                    "tags": tags,
+                    "backend_name": self.exps.loc[self.exps.experiment_id == experiment_id]
+                    .iloc[0]
+                    .backend_name,
+                    "chisq": kwargs.get("chisq", None),
+                    "creation_datetime": self.exps.loc[self.exps.experiment_id == experiment_id]
+                    .iloc[0]
+                    .start_datetime,
+                }
+            ]
         )
+        if len(self.results) > 0:
+            self.results = pd.concat(
+                [
+                    self.results,
+                    row,
+                ],
+                ignore_index=True,
+            )
+        else:
+            # Avoid the FutureWarning on concatenating empty DataFrames
+            # introduced in https://github.com/pandas-dev/pandas/pull/52532
+            self.results = row
 
         # a helper method for updating the experiment's device components, see usage below
         def add_new_components(expcomps):
@@ -422,7 +395,7 @@ class FakeService:
         tags: Optional[List[str]] = None,
         tags_operator: Optional[str] = "OR",
         **filters: Any,
-    ) -> List[Dict]:
+    ) -> List[AnalysisResultData]:
         """Returns a list of analysis results filtered by the given criteria"""
         # pylint: disable = unused-argument
         df = self.results
@@ -479,7 +452,7 @@ class FakeService:
         )
 
         df = df.iloc[:limit]
-        return df.to_dict("records")
+        return [AnalysisResultData(**res) for res in df.to_dict("records")]
 
     def delete_analysis_result(self, result_id: str) -> None:
         """Deletes an analysis result"""
