@@ -47,7 +47,6 @@ from qiskit_ibm_experiment import (
 )
 from qiskit_experiments.framework.json import ExperimentEncoder, ExperimentDecoder
 from qiskit_experiments.database_service.utils import (
-    qiskit_version,
     plot_to_svg_bytes,
     ThreadSafeOrderedDict,
     ThreadSafeList,
@@ -59,6 +58,7 @@ from qiskit_experiments.framework.analysis_result_table import AnalysisResultTab
 from qiskit_experiments.framework import BackendData
 from qiskit_experiments.framework.containers import ArtifactData
 from qiskit_experiments.framework import ExperimentStatus, AnalysisStatus, AnalysisCallback
+from qiskit_experiments.framework.package_deps import qiskit_version
 from qiskit_experiments.database_service.exceptions import (
     ExperimentDataError,
     ExperimentEntryNotFound,
@@ -587,7 +587,7 @@ class ExperimentData:
         if provider is not None:
             self._set_hgp_from_provider(provider)
         # qiskit-ibm-runtime style
-        elif hasattr(self._backend, "_instance"):
+        elif hasattr(self._backend, "_instance") and self._backend._instance:
             self.hgp = self._backend._instance
         if recursive:
             for data in self.child_data():
@@ -630,6 +630,7 @@ class ExperimentData:
             self._deleted_figures.append(key)
         self._figures = ThreadSafeOrderedDict()
         self._artifacts = ThreadSafeOrderedDict()
+        self._db_data.figure_names.clear()
 
     @property
     def service(self) -> Optional[IBMExperimentService]:
@@ -1474,6 +1475,11 @@ class ExperimentData:
         dataframe: bool = False,
     ) -> AnalysisResult | list[AnalysisResult] | pd.DataFrame:
         """Return analysis results associated with this experiment.
+
+        .. caution::
+            Retrieving analysis results by a numerical index, whether an integer or a slice,
+            is deprecated as of 0.6 and will be removed in a future release. Use the name
+            or ID of the result instead.
 
         When this method is called with ``dataframe=True`` you will receive
         matched result entries with the ``index`` condition in the dataframe format.
